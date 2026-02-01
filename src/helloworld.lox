@@ -1,0 +1,7 @@
+print "Hello, world!";
+
+var a = "This is a ";
+var b = "sentence.";
+var c = a + b;
+
+print c;
