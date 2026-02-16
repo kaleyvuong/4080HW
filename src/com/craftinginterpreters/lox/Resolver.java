@@ -227,7 +227,23 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     resolve(expr.right);
     return null;
   }
-//< visit-binary-expr
+
+  @Override
+  public Void visitCommaExpr(Expr.Comma expr) {
+    resolve(expr.left);
+    resolve(expr.right);
+    return null;
+  }
+
+  @Override
+  public Void visitTernaryExpr(Expr.Ternary expr) {
+    resolve(expr.condition);
+    resolve(expr.thenBranch);
+    resolve(expr.elseBranch);
+    return null;
+  }
+
+  //< visit-binary-expr
 //> visit-call-expr
   @Override
   public Void visitCallExpr(Expr.Call expr) {

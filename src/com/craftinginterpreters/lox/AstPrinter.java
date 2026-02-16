@@ -154,6 +154,16 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     return parenthesize(expr.operator.lexeme,
                         expr.left, expr.right);
   }
+
+  @Override
+  public String visitCommaExpr(Expr.Comma expr) {
+    return parenthesize(",", expr.left, expr.right);
+  }
+
+  @Override
+  public String visitTernaryExpr(Expr.Ternary expr) {
+    return parenthesize2("?:", expr.condition, expr.thenBranch, expr.elseBranch);
+  }
 //> Functions omit
 
   @Override

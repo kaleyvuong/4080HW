@@ -52,10 +52,10 @@ class Parser {
     return equality();
 */
 //> Statements and State expression
-    return assignment();
+    return comma();
 //< Statements and State expression
   }
-//< expression
+  //< expression
 //> Statements and State declaration
   private Stmt declaration() {
     try {
@@ -316,6 +316,34 @@ class Parser {
     return expr;
   }
 //< Statements and State parse-assignment
+  private Expr comma() {
+    if (match(COMMA)) {
+      error(previous(), "Missing left-hand operand before ','.");
+      ternary(); // parse and discard right-hand side
+      return null;
+    }
+
+    Expr expr = ternary();
+    while (match(COMMA)) {
+      Token operator = previous();
+      Expr right = ternary();
+      expr = new Expr.Comma(expr, right);
+    }
+    return expr;
+  }
+
+  private Expr ternary() {
+    Expr expr = assignment();
+
+    if (match(QUESTION)) {
+      Expr thenBranch = expression();
+      consume(COLON, "Expect ':' after ternary condition.");
+      Expr elseBranch = ternary();
+      return new Expr.Ternary(expr, thenBranch, elseBranch);
+    }
+
+    return expr;
+  }
 //> Control Flow or
   private Expr or() {
     Expr expr = and();
@@ -344,6 +372,13 @@ class Parser {
 //< Control Flow and
 //> equality
   private Expr equality() {
+    if (match(BANG_EQUAL, EQUAL_EQUAL)) {
+      error(previous(), "Missing left-hand operand before '" +
+              previous().lexeme + "'.");
+      comparison(); // parse and discard right-hand side
+      return null;
+    }
+
     Expr expr = comparison();
 
     while (match(BANG_EQUAL, EQUAL_EQUAL)) {
@@ -357,6 +392,12 @@ class Parser {
 //< equality
 //> comparison
   private Expr comparison() {
+    if (match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
+      error(previous(), "Missing left-hand operand before '" +
+              previous().lexeme + "'.");
+      term(); // parse and discard right-hand side
+      return null;
+    }
     Expr expr = term();
 
     while (match(GREATER, GREATER_EQUAL, LESS, LESS_EQUAL)) {
@@ -370,6 +411,11 @@ class Parser {
 //< comparison
 //> term
   private Expr term() {
+    if (match(PLUS)) {
+      error(previous(), "Missing left-hand operand before '+'.");
+      factor(); // parse and discard right-hand side
+      return null;
+    }
     Expr expr = factor();
 
     while (match(MINUS, PLUS)) {
@@ -383,6 +429,12 @@ class Parser {
 //< term
 //> factor
   private Expr factor() {
+    if (match(SLASH, STAR)) {
+      error(previous(), "Missing left-hand operand before '" +
+              previous().lexeme + "'.");
+      unary(); // parse and discard right-hand side
+      return null;
+    }
     Expr expr = unary();
 
     while (match(SLASH, STAR)) {
@@ -420,7 +472,7 @@ class Parser {
           error(peek(), "Can't have more than 255 arguments.");
         }
 //< check-max-arity
-        arguments.add(expression());
+        arguments.add(assignment());
       } while (match(COMMA));
     }
 

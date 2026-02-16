@@ -308,6 +308,9 @@ class Interpreter implements Expr.Visitor<Object>,
         if (left instanceof String && right instanceof String) {
           return (String)left + (String)right;
         }
+        if (left instanceof String || right instanceof String) {
+          return stringify(left) + stringify(right);
+        }
 
 /* Evaluating Expressions binary-plus < Evaluating Expressions string-wrong-type
         break;
@@ -320,7 +323,10 @@ class Interpreter implements Expr.Visitor<Object>,
       case SLASH:
 //> check-slash-operand
         checkNumberOperands(expr.operator, left, right);
-//< check-slash-operand
+        if ((double)right == 0) {
+          throw new RuntimeError(expr.operator,
+                  "Division by zero.");
+        }
         return (double)left / (double)right;
       case STAR:
 //> check-star-operand
@@ -332,7 +338,25 @@ class Interpreter implements Expr.Visitor<Object>,
     // Unreachable.
     return null;
   }
-//< visit-binary
+
+  @Override
+  public Object visitCommaExpr(Expr.Comma expr) {
+    evaluate(expr.left);
+    return evaluate(expr.right);
+  }
+
+  @Override
+  public Object visitTernaryExpr(Expr.Ternary expr) {
+    Object condition = evaluate(expr.condition);
+
+    if (isTruthy(condition)) {
+      return evaluate(expr.thenBranch);
+    } else {
+      return evaluate(expr.elseBranch);
+    }
+  }
+
+  //< visit-binary
 //> Functions visit-call
   @Override
   public Object visitCallExpr(Expr.Call expr) {
