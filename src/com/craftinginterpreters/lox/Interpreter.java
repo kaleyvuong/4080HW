@@ -48,7 +48,7 @@ class Interpreter implements Expr.Visitor<Object>,
 
       @Override
       public String toString() { return "<native fn>"; }
-    });
+    }, true);
   }
   
 //< Functions interpreter-constructor
@@ -74,7 +74,7 @@ class Interpreter implements Expr.Visitor<Object>,
   }
 //< Statements and State interpret
 //> evaluate
-  private Object evaluate(Expr expr) {
+  Object evaluate(Expr expr) {
     return expr.accept(this);
   }
 //< evaluate
@@ -124,12 +124,12 @@ class Interpreter implements Expr.Visitor<Object>,
     }
 
 //< Inheritance interpret-superclass
-    environment.define(stmt.name.lexeme, null);
+    environment.define(stmt.name.lexeme, null, false);
 //> Inheritance begin-superclass-environment
 
     if (stmt.superclass != null) {
       environment = new Environment(environment);
-      environment.define("super", superclass);
+      environment.define("super", superclass, true);
     }
 //< Inheritance begin-superclass-environment
 //> interpret-methods
@@ -188,7 +188,7 @@ class Interpreter implements Expr.Visitor<Object>,
     LoxFunction function = new LoxFunction(stmt, environment,
                                            false);
 //< Classes construct-function
-    environment.define(stmt.name.lexeme, function);
+    environment.define(stmt.name.lexeme, function, true);
     return null;
   }
 //< Functions visit-function
@@ -224,11 +224,14 @@ class Interpreter implements Expr.Visitor<Object>,
   @Override
   public Void visitVarStmt(Stmt.Var stmt) {
     Object value = null;
+    boolean initialized = false;
+
     if (stmt.initializer != null) {
       value = evaluate(stmt.initializer);
+      initialized = true;
     }
 
-    environment.define(stmt.name.lexeme, value);
+    environment.define(stmt.name.lexeme, value, initialized);
     return null;
   }
 //< Statements and State visit-var

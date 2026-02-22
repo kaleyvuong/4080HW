@@ -30,7 +30,7 @@ class LoxFunction implements LoxCallable {
 //> Classes bind-instance
   LoxFunction bind(LoxInstance instance) {
     Environment environment = new Environment(closure);
-    environment.define("this", instance);
+    environment.define("this", instance, true);
 /* Classes bind-instance < Classes lox-function-bind-with-initializer
     return new LoxFunction(declaration, environment);
 */
@@ -64,7 +64,7 @@ class LoxFunction implements LoxCallable {
 //< call-closure
     for (int i = 0; i < declaration.params.size(); i++) {
       environment.define(declaration.params.get(i).lexeme,
-          arguments.get(i));
+          arguments.get(i), true);
     }
 
 /* Functions function-call < Functions catch-return

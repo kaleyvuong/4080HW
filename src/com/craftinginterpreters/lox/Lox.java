@@ -19,7 +19,10 @@ public class Lox {
 //> Evaluating Expressions had-runtime-error-field
   static boolean hadRuntimeError = false;
 
-//< Evaluating Expressions had-runtime-error-field
+  private static boolean suppressErrors = false;
+
+
+  //< Evaluating Expressions had-runtime-error-field
   public static void main(String[] args) throws IOException {
     if (args.length > 1) {
       System.out.println("Usage: jlox [script]");
@@ -53,13 +56,71 @@ public class Lox {
       System.out.print("> ");
       String line = reader.readLine();
       if (line == null) break;
-      run(line);
+      runRepl(line);
 //> reset-had-error
       hadError = false;
 //< reset-had-error
     }
   }
 //< prompt
+private static void runRepl(String source) {
+  Scanner scanner = new Scanner(source);
+  List<Token> tokens = scanner.scanTokens();
+  Parser parser = new Parser(tokens);
+
+  suppressErrors = true;
+  List<Stmt> statements = parser.parse();
+  suppressErrors = false;
+
+  boolean parseError = hadError;
+  if (statements != null) {
+    for (Stmt stmt : statements) {
+      if (stmt == null) {
+        parseError = true;
+        break;
+      }
+    }
+  }
+
+  if (parseError) {
+    hadError = false;
+
+    parser = new Parser(tokens);
+    Expr expression = parser.expression();
+
+    if (!hadError && expression != null) {
+      Resolver resolver = new Resolver(interpreter);
+      resolver.resolve(expression);
+      if (!hadError) {
+        Object value = interpreter.evaluate(expression);
+        System.out.println(stringify(value));
+      }
+      return;
+    }
+    return;
+  }
+
+  Resolver resolver = new Resolver(interpreter);
+  resolver.resolve(statements);
+  if (!hadError) {
+    interpreter.interpret(statements);
+  }
+}
+
+  // Helper for consistent printing
+  private static String stringify(Object value) {
+    if (value == null) return "nil";
+
+    if (value instanceof Double) {
+      String text = value.toString();
+      if (text.endsWith(".0")) {
+        text = text.substring(0, text.length() - 2);
+      }
+      return text;
+    }
+
+    return value.toString();
+  }
 //> run
   private static void run(String source) {
     Scanner scanner = new Scanner(source);
@@ -119,6 +180,8 @@ public class Lox {
 //< lox-error
 //> Parsing Expressions token-error
   static void error(Token token, String message) {
+    if (suppressErrors) return;  // Don't report if suppressed
+
     if (token.type == TokenType.EOF) {
       report(token.line, " at end", message);
     } else {

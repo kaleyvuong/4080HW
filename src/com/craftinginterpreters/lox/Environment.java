@@ -8,7 +8,7 @@ class Environment {
 //> enclosing-field
   final Environment enclosing;
 //< enclosing-field
-  private final Map<String, Object> values = new HashMap<>();
+  private final Map<String, Variable> values = new HashMap<>();
 //> environment-constructors
   Environment() {
     enclosing = null;
@@ -20,9 +20,23 @@ class Environment {
 //< environment-constructors
 //> environment-get
 
+  private static class Variable {
+    final Object value;
+    final boolean initialized;
+
+    Variable(Object value, boolean initialized) {
+      this.value = value;
+      this.initialized = initialized;
+    }
+  }
   Object get(Token name) {
     if (values.containsKey(name.lexeme)) {
-      return values.get(name.lexeme);
+      Variable var = values.get(name.lexeme);
+      if (!var.initialized) {
+        throw new RuntimeError(name,
+                "Variable '" + name.lexeme + "' has not been initialized.");
+      }
+      return var.value;
     }
 //> environment-get-enclosing
 
@@ -37,7 +51,7 @@ class Environment {
 //> environment-assign
   void assign(Token name, Object value) {
     if (values.containsKey(name.lexeme)) {
-      values.put(name.lexeme, value);
+      values.put(name.lexeme, new Variable(value, true));
       return;
     }
 
@@ -53,8 +67,8 @@ class Environment {
   }
 //< environment-assign
 //> environment-define
-  void define(String name, Object value) {
-    values.put(name, value);
+  void define(String name, Object value, boolean initialized) {
+    values.put(name, new Variable(value, initialized));
   }
 //< environment-define
 //> Resolving and Binding ancestor
@@ -69,12 +83,17 @@ class Environment {
 //< Resolving and Binding ancestor
 //> Resolving and Binding get-at
   Object getAt(int distance, String name) {
-    return ancestor(distance).values.get(name);
+    Variable var = ancestor(distance).values.get(name);
+    if (!var.initialized) {
+      throw new RuntimeError(new Token(TokenType.IDENTIFIER, name, null, 0),
+              "Variable '" + name + "' has not been initialized.");
+    }
+    return var.value;
   }
 //< Resolving and Binding get-at
 //> Resolving and Binding assign-at
   void assignAt(int distance, Token name, Object value) {
-    ancestor(distance).values.put(name.lexeme, value);
+    ancestor(distance).values.put(name.lexeme, new Variable(value, true));
   }
 //< Resolving and Binding assign-at
 //> omit

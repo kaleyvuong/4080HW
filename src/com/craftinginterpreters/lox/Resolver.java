@@ -351,7 +351,7 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   }
 //< resolve-stmt
 //> resolve-expr
-  private void resolve(Expr expr) {
+  void resolve(Expr expr) {
     expr.accept(this);
   }
 //< resolve-expr

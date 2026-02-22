@@ -47,7 +47,7 @@ class Parser {
   }
 //< Statements and State parse
 //> expression
-  private Expr expression() {
+   Expr expression() {
 /* Parsing Expressions expression < Statements and State expression
     return equality();
 */
