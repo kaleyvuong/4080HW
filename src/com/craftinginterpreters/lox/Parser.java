@@ -118,6 +118,7 @@ class Parser {
 //> Control Flow match-while
     if (match(WHILE)) return whileStatement();
 //< Control Flow match-while
+    if (match(BREAK)) return breakStatement();
 //> parse-block
     if (match(LEFT_BRACE)) return new Stmt.Block(block());
 //< parse-block
@@ -125,6 +126,12 @@ class Parser {
     return expressionStatement();
   }
 //< Statements and State parse-statement
+  private Stmt breakStatement() {
+    Token keyword = previous();
+    consume(SEMICOLON, "Expect ';' after 'break'.");
+    return new Stmt.Break(keyword);
+  }
+
 //> Control Flow for-statement
   private Stmt forStatement() {
     consume(LEFT_PAREN, "Expect '(' after 'for'.");

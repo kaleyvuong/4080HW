@@ -238,12 +238,21 @@ class Interpreter implements Expr.Visitor<Object>,
 //> Control Flow visit-while
   @Override
   public Void visitWhileStmt(Stmt.While stmt) {
-    while (isTruthy(evaluate(stmt.condition))) {
-      execute(stmt.body);
+    try {
+      while (isTruthy(evaluate(stmt.condition))) {
+        execute(stmt.body);
+      }
+    } catch (BreakException ignored) {
     }
     return null;
   }
-//< Control Flow visit-while
+
+  @Override
+  public Void visitBreakStmt(Stmt.Break stmt) {
+    throw new BreakException();
+  }
+
+  //< Control Flow visit-while
 //> Statements and State visit-assign
   @Override
   public Object visitAssignExpr(Expr.Assign expr) {

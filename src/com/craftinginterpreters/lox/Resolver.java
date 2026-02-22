@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Stack;
 
 class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
+  private int loopDepth = 0;
   private final Interpreter interpreter;
 //> scopes-field
   private final Stack<Map<String, Boolean>> scopes = new Stack<>();
@@ -208,10 +209,24 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   @Override
   public Void visitWhileStmt(Stmt.While stmt) {
     resolve(stmt.condition);
-    resolve(stmt.body);
+    loopDepth++;
+    try {
+      resolve(stmt.body);
+    } finally {
+      loopDepth--;
+    }
     return null;
   }
-//< visit-while-stmt
+
+  @Override
+  public Void visitBreakStmt(Stmt.Break stmt) {
+    if (loopDepth == 0) {
+      Lox.error(stmt.keyword, "Can't use 'break' outside of a loop");
+    }
+    return null;
+  }
+
+  //< visit-while-stmt
 //> visit-assign-expr
   @Override
   public Void visitAssignExpr(Expr.Assign expr) {

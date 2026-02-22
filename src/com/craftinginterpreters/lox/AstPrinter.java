@@ -140,6 +140,11 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   public String visitWhileStmt(Stmt.While stmt) {
     return parenthesize2("while", stmt.condition, stmt.body);
   }
+
+  @Override
+  public String visitBreakStmt(Stmt.Break stmt) {
+    return "(break)";
+  }
 //< Control Flow omit
 //> Statements and State omit
 
