@@ -91,11 +91,43 @@ class Environment {
     return var.value;
   }
 //< Resolving and Binding get-at
+  Object getAt(int distance, int index) {
+
+    Environment env = ancestor(distance);
+
+    int currentIndex = 0;
+    for (Map.Entry<String, Variable> entry : env.values.entrySet()) {
+      if (currentIndex == index) {
+        Variable var = entry.getValue();
+        if (!var.initialized) {
+          throw new RuntimeError(null, "Variable has not been initialized.");
+        }
+        return var.value;
+      }
+      currentIndex++;
+    }
+
+    throw new RuntimeError(null, "Variable index out of bounds.");
+  }
+
 //> Resolving and Binding assign-at
-  void assignAt(int distance, Token name, Object value) {
-    ancestor(distance).values.put(name.lexeme, new Variable(value, true));
+  void assignAt(int distance, int index, Object value) {
+    Environment env = ancestor(distance);
+
+    int currentIndex = 0;
+    for (Map.Entry<String, Variable> entry : env.values.entrySet()) {
+      if (currentIndex == index) {
+        env.values.put(entry.getKey(), new Variable(value, true));
+        return;
+      }
+      currentIndex++;
+    }
+
+    throw new RuntimeError(null, "Variable index out of bounds.");
   }
 //< Resolving and Binding assign-at
+
+
 //> omit
   @Override
   public String toString() {

@@ -234,7 +234,28 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   public String visitVariableExpr(Expr.Variable expr) {
     return expr.name.lexeme;
   }
-//< Statements and State omit
+
+  @Override
+  public String visitLambdaExpr(Expr.Lambda expr) {
+    StringBuilder builder = new StringBuilder();
+    builder.append("(lambda (");
+
+    for (int i = 0; i < expr.params.size(); i++) {
+      if (i > 0) builder.append(" ");
+      builder.append(expr.params.get(i).lexeme);
+    }
+
+    builder.append(") ");
+
+    for (Stmt stmt : expr.body) {
+      builder.append(stmt.accept(this));
+    }
+
+    builder.append(")");
+    return builder.toString();
+  }
+
+  //< Statements and State omit
 //< visit-methods
 //> print-utilities
   private String parenthesize(String name, Expr... exprs) {

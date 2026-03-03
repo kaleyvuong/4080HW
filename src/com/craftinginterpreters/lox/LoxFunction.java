@@ -1,91 +1,74 @@
-//> Functions lox-function
 package com.craftinginterpreters.lox;
 
 import java.util.List;
 
 class LoxFunction implements LoxCallable {
-  private final Stmt.Function declaration;
-//> closure-field
+  private final String name;  // Add this field - may be null for lambdas
+  private final List<Token> params;  // Add this field
+  private final List<Stmt> body;  // Add this field
   private final Environment closure;
-  
-//< closure-field
-/* Functions lox-function < Functions closure-constructor
-  LoxFunction(Stmt.Function declaration) {
-*/
-/* Functions closure-constructor < Classes is-initializer-field
-  LoxFunction(Stmt.Function declaration, Environment closure) {
-*/
-//> Classes is-initializer-field
   private final boolean isInitializer;
 
-  LoxFunction(Stmt.Function declaration, Environment closure,
-              boolean isInitializer) {
+  // EXISTING constructor for named functions
+  LoxFunction(Stmt.Function declaration, Environment closure, boolean isInitializer) {
     this.isInitializer = isInitializer;
-//< Classes is-initializer-field
-//> closure-constructor
     this.closure = closure;
-//< closure-constructor
-    this.declaration = declaration;
+    this.name = declaration.name.lexeme;  // Extract these from declaration
+    this.params = declaration.params;
+    this.body = declaration.body;
   }
-//> Classes bind-instance
+
+  // NEW constructor for lambdas
+  LoxFunction(Expr.Lambda lambda, Environment closure) {
+    this.name = null;  // Anonymous
+    this.params = lambda.params;
+    this.body = lambda.body;
+    this.closure = closure;
+    this.isInitializer = false;
+  }
+
+  // PRIVATE constructor for bind() - helper to avoid reconstructing declaration
+  private LoxFunction(String name, List<Token> params, List<Stmt> body,
+                      Environment closure, boolean isInitializer) {
+    this.name = name;
+    this.params = params;
+    this.body = body;
+    this.closure = closure;
+    this.isInitializer = isInitializer;
+  }
+
   LoxFunction bind(LoxInstance instance) {
     Environment environment = new Environment(closure);
     environment.define("this", instance, true);
-/* Classes bind-instance < Classes lox-function-bind-with-initializer
-    return new LoxFunction(declaration, environment);
-*/
-//> lox-function-bind-with-initializer
-    return new LoxFunction(declaration, environment,
-                           isInitializer);
-//< lox-function-bind-with-initializer
+    // Use private constructor instead of recreating Stmt.Function
+    return new LoxFunction(name, params, body, environment, isInitializer);
   }
-//< Classes bind-instance
-//> function-to-string
+
   @Override
   public String toString() {
-    return "<fn " + declaration.name.lexeme + ">";
+    return name != null ? "<fn " + name + ">" : "<lambda>";
   }
-//< function-to-string
-//> function-arity
+
   @Override
   public int arity() {
-    return declaration.params.size();
+    return params.size();
   }
-//< function-arity
-//> function-call
+
   @Override
-  public Object call(Interpreter interpreter,
-                     List<Object> arguments) {
-/* Functions function-call < Functions call-closure
-    Environment environment = new Environment(interpreter.globals);
-*/
-//> call-closure
+  public Object call(Interpreter interpreter, List<Object> arguments) {
     Environment environment = new Environment(closure);
-//< call-closure
-    for (int i = 0; i < declaration.params.size(); i++) {
-      environment.define(declaration.params.get(i).lexeme,
-          arguments.get(i), true);
+    for (int i = 0; i < params.size(); i++) {
+      environment.define(params.get(i).lexeme, arguments.get(i), true);
     }
 
-/* Functions function-call < Functions catch-return
-    interpreter.executeBlock(declaration.body, environment);
-*/
-//> catch-return
     try {
-      interpreter.executeBlock(declaration.body, environment);
+      interpreter.executeBlock(body, environment);
     } catch (Return returnValue) {
-//> Classes early-return-this
       if (isInitializer) return closure.getAt(0, "this");
-
-//< Classes early-return-this
       return returnValue.value;
     }
-//< catch-return
-//> Classes return-this
 
     if (isInitializer) return closure.getAt(0, "this");
-//< Classes return-this
     return null;
   }
-//< function-call
 }

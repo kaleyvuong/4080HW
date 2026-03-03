@@ -29,11 +29,21 @@ class Interpreter implements Expr.Visitor<Object>,
   private Environment environment = globals;
 //< Functions global-environment
 //> Resolving and Binding locals-field
-  private final Map<Expr, Integer> locals = new HashMap<>();
 //< Resolving and Binding locals-field
 //> Statements and State environment-field
 
 //< Statements and State environment-field
+private static class LocalInfo {
+  final int depth;
+  final int index;
+
+  LocalInfo(int depth, int index) {
+    this.depth = depth;
+    this.index = index;
+  }
+}
+
+  private final Map<Expr, LocalInfo> locals = new HashMap<>();
 //> Functions interpreter-constructor
   Interpreter() {
     globals.define("clock", new LoxCallable() {
@@ -84,8 +94,8 @@ class Interpreter implements Expr.Visitor<Object>,
   }
 //< Statements and State execute
 //> Resolving and Binding resolve
-  void resolve(Expr expr, int depth) {
-    locals.put(expr, depth);
+  void resolve(Expr expr, int depth, int index) {
+    locals.put(expr, new LocalInfo(depth, index));
   }
 //< Resolving and Binding resolve
 //> Statements and State execute-block
@@ -262,13 +272,12 @@ class Interpreter implements Expr.Visitor<Object>,
 */
 //> Resolving and Binding resolved-assign
 
-    Integer distance = locals.get(expr);
-    if (distance != null) {
-      environment.assignAt(distance, expr.name, value);
+    LocalInfo info = locals.get(expr);
+    if (info != null) {
+      environment.assignAt(info.depth, info.index, value);
     } else {
       globals.assign(expr.name, value);
     }
-
 //< Resolving and Binding resolved-assign
     return value;
   }
@@ -454,27 +463,21 @@ class Interpreter implements Expr.Visitor<Object>,
 //> Inheritance interpreter-visit-super
   @Override
   public Object visitSuperExpr(Expr.Super expr) {
-    int distance = locals.get(expr);
+    LocalInfo info = locals.get(expr);
     LoxClass superclass = (LoxClass)environment.getAt(
-        distance, "super");
-//> super-find-this
+            info.depth, "super");  // Still use name for special variables
 
     LoxInstance object = (LoxInstance)environment.getAt(
-        distance - 1, "this");
-//< super-find-this
-//> super-find-method
+            info.depth - 1, "this");  // Still use name for special variables
 
     LoxFunction method = superclass.findMethod(expr.method.lexeme);
-//> super-no-method
 
     if (method == null) {
       throw new RuntimeError(expr.method,
-          "Undefined property '" + expr.method.lexeme + "'.");
+              "Undefined property '" + expr.method.lexeme + "'.");
     }
 
-//< super-no-method
     return method.bind(object);
-//< super-find-method
   }
 //< Inheritance interpreter-visit-super
 //> Classes interpreter-visit-this
@@ -514,13 +517,19 @@ class Interpreter implements Expr.Visitor<Object>,
     return lookUpVariable(expr.name, expr);
 //< Resolving and Binding call-look-up-variable
   }
-//> Resolving and Binding look-up-variable
+
+  @Override
+  public Object visitLambdaExpr(Expr.Lambda expr) {
+    return new LoxFunction(expr, environment);
+  }
+
+  //> Resolving and Binding look-up-variable
   private Object lookUpVariable(Token name, Expr expr) {
-    Integer distance = locals.get(expr);
-    if (distance != null) {
-      return environment.getAt(distance, name.lexeme);
+    LocalInfo info = locals.get(expr);
+    if (info != null) {
+      return environment.getAt(info.depth, info.index);  // Use index
     } else {
-      return globals.get(name);
+      return globals.get(name);  // Globals still use name lookup
     }
   }
 //< Resolving and Binding look-up-variable
