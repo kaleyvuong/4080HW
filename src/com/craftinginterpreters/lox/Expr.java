@@ -20,6 +20,7 @@ abstract class Expr {
     R visitUnaryExpr(Unary expr);
     R visitVariableExpr(Variable expr);
     R visitLambdaExpr(Expr.Lambda expr);
+    R visitInnerExpr(Expr.Inner expr);
   }
 
   // Nested Expr classes here...
@@ -261,6 +262,19 @@ static class Ternary extends Expr {
     @Override
     <R> R accept(Visitor<R> visitor) {
       return visitor.visitLambdaExpr(this);
+    }
+  }
+
+  static class Inner extends Expr {
+    final Token keyword;
+
+    Inner(Token keyword) {
+      this.keyword = keyword;
+    }
+
+    @Override
+    <R> R accept(Visitor<R> visitor) {
+      return visitor.visitInnerExpr(this);
     }
   }
   abstract <R> R accept(Visitor<R> visitor);

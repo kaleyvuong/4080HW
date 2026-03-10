@@ -15,6 +15,7 @@ abstract class Stmt {
     R visitVarStmt(Var stmt);
     R visitWhileStmt(While stmt);
     R visitBreakStmt(Stmt.Break stmt);
+    R visitMixinStmt(Mixin stmt);
   }
 
   // Nested Stmt classes here...
@@ -34,11 +35,17 @@ abstract class Stmt {
 //< stmt-block
 //> stmt-class
   static class Class extends Stmt {
+  final Token name;
+  final Expr.Variable superclass;
+  final List<Expr.Variable> mixins;
+  final List<Function> methods;
     Class(Token name,
           Expr.Variable superclass,
+          List<Expr.Variable> mixins,
           List<Function> methods) {
       this.name = name;
       this.superclass = superclass;
+      this.mixins = mixins;
       this.methods = methods;
     }
 
@@ -46,11 +53,7 @@ abstract class Stmt {
     <R> R accept(Visitor<R> visitor) {
       return visitor.visitClassStmt(this);
     }
-
-    final Token name;
-    final Expr.Variable superclass;
-    final List<Function> methods;
-  }
+}
 //< stmt-class
 //> stmt-expression
   static class Expression extends Stmt {
@@ -68,10 +71,12 @@ abstract class Stmt {
 //< stmt-expression
 //> stmt-function
   static class Function extends Stmt {
-    Function(Token name, List<Token> params, List<Stmt> body) {
+    Function(Token name, List<Token> params, List<Stmt> body, boolean isStatic, boolean isGetter) {
       this.name = name;
       this.params = params;
       this.body = body;
+      this.isStatic = isStatic;
+      this.isGetter = isGetter;
     }
 
     @Override
@@ -82,7 +87,9 @@ abstract class Stmt {
     final Token name;
     final List<Token> params;
     final List<Stmt> body;
-  }
+    final boolean isStatic;
+    final boolean isGetter;
+}
 //< stmt-function
 //> stmt-if
   static class If extends Stmt {
@@ -175,5 +182,21 @@ static class Break extends Stmt {
   <R> R accept(Visitor<R> visitor) { return visitor.visitBreakStmt(this); }
 }
   abstract <R> R accept(Visitor<R> visitor);
+
+  static class Mixin extends Stmt {
+    final Token name;
+    final List<Stmt.Function> methods;
+
+    Mixin(Token name, List<Stmt.Function> methods) {
+      this.name = name;
+      this.methods = methods;
+    }
+
+    @Override
+    <R> R accept(Visitor<R> visitor) {
+      return visitor.visitMixinStmt(this);
+    }
+  }
 }
+
 //< Appendix II stmt

@@ -111,4 +111,9 @@ public class RpnPrinter implements Expr.Visitor<String>{
     public String visitLambdaExpr(Expr.Lambda expr) {
         return null;
     }
+
+    @Override
+    public String visitInnerExpr(Expr.Inner expr) {
+        return null;
+    }
 }

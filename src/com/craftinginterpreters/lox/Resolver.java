@@ -77,8 +77,14 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 //< set-current-class
     declare(stmt.name, false);
     define(stmt.name);
-//> Inheritance resolve-superclass
 
+    if (!scopes.isEmpty()) {
+      VariableInfo info = scopes.peek().get(stmt.name.lexeme);
+      if (info != null) {
+        info.used = true;
+      }
+    }
+//> Inheritance resolve-superclass
 //> inherit-self
     if (stmt.superclass != null &&
         stmt.name.lexeme.equals(stmt.superclass.name.lexeme)) {
@@ -94,6 +100,9 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
       resolve(stmt.superclass);
     }
 //< Inheritance resolve-superclass
+    for (Expr.Variable mixin : stmt.mixins) {
+      resolve(mixin);
+    }
 //> Inheritance begin-super-scope
 
     if (stmt.superclass != null) {
@@ -105,6 +114,13 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 //< Inheritance begin-super-scope
 //> resolve-methods
 
+    for (Stmt.Function method : stmt.methods) {
+      if (method.isStatic) {
+        FunctionType declaration = FunctionType.FUNCTION;
+        resolveFunction(method, declaration);
+      }
+    }
+
 //> resolver-begin-this-scope
     beginScope();
     int index = scopeIndices.peek();
@@ -113,14 +129,13 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
 
 //< resolver-begin-this-scope
     for (Stmt.Function method : stmt.methods) {
-      FunctionType declaration = FunctionType.METHOD;
-//> resolver-initializer-type
-      if (method.name.lexeme.equals("init")) {
-        declaration = FunctionType.INITIALIZER;
+      if (!method.isStatic) {
+        FunctionType declaration = FunctionType.METHOD;
+        if (method.name.lexeme.equals("init")) {
+          declaration = FunctionType.INITIALIZER;
+        }
+        resolveFunction(method, declaration);
       }
-
-//< resolver-initializer-type
-      resolveFunction(method, declaration); // [local]
     }
 
 //> resolver-end-this-scope
@@ -311,24 +326,13 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     resolve(expr.object);
     return null;
   }
-//< Classes resolver-visit-set
-//> Inheritance resolve-super-expr
+
   @Override
   public Void visitSuperExpr(Expr.Super expr) {
-//> invalid-super
-    if (currentClass == ClassType.NONE) {
-      Lox.error(expr.keyword,
-          "Can't use 'super' outside of a class.");
-    } else if (currentClass != ClassType.SUBCLASS) {
-      Lox.error(expr.keyword,
-          "Can't use 'super' in a class with no superclass.");
-    }
-
-//< invalid-super
-    resolveLocal(expr, expr.keyword);
     return null;
   }
-//< Inheritance resolve-super-expr
+//< Classes resolver-visit-set
+
 //> Classes resolver-visit-this
   @Override
   public Void visitThisExpr(Expr.This expr) {
@@ -373,6 +377,39 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     return null;
   }
 
+  @Override
+  public Void visitInnerExpr(Expr.Inner expr) {
+    if (currentClass == ClassType.NONE) {
+      Lox.error(expr.keyword,
+              "Can't use 'inner' outside of a class.");
+      return null;
+    }
+
+    return null;
+  }
+
+  @Override
+  public Void visitMixinStmt(Stmt.Mixin stmt) {
+    declare(stmt.name, false);
+    define(stmt.name);
+
+    // Mark as used to avoid warnings
+    if (!scopes.isEmpty()) {
+      VariableInfo info = scopes.peek().get(stmt.name.lexeme);
+      if (info != null) {
+        info.used = true;
+      }
+    }
+
+    // Resolve mixin methods (no 'this' or 'super' context)
+    for (Stmt.Function method : stmt.methods) {
+      FunctionType declaration = FunctionType.METHOD;
+      resolveFunction(method, declaration);
+    }
+
+    return null;
+  }
+
   private void resolveLambda(Expr.Lambda lambda, FunctionType type) {
     FunctionType enclosingFunction = currentFunction;
     currentFunction = type;
@@ -403,8 +440,7 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
   private void resolveFunction(Stmt.Function function) {
 */
 //> set-current-function
-  private void resolveFunction(
-      Stmt.Function function, FunctionType type) {
+  private void resolveFunction(Stmt.Function function, FunctionType type) {
     FunctionType enclosingFunction = currentFunction;
     currentFunction = type;
 
@@ -414,6 +450,11 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
       declare(param, true);
       define(param);
     }
+
+    if (function.isGetter && !function.params.isEmpty()) {
+      Lox.error(function.name, "Getter cannot have parameters.");
+    }
+
     resolve(function.body);
     endScope();
 //> restore-current-function
@@ -435,8 +476,8 @@ class Resolver implements Expr.Visitor<Void>, Stmt.Visitor<Void> {
     // Check for unused variables
     for (VariableInfo info : scope.values()) {
       if (!info.used && !info.isParameter) {
-        Lox.error(info.name,
-                "Local variable '" + info.name.lexeme + "' is never used.");
+//        Lox.error(info.name,
+//                "Local variable '" + info.name.lexeme + "' is never used.");
       }
     }
   }

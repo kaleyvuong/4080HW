@@ -144,24 +144,61 @@ private static class LocalInfo {
 //< Inheritance begin-superclass-environment
 //> interpret-methods
 
-    Map<String, LoxFunction> methods = new HashMap<>();
+    Map<String, LoxFunction> staticMethods = new HashMap<>();
+    Map<String, LoxFunction> instanceMethods = new HashMap<>();
+
+    for (Expr.Variable mixinExpr : stmt.mixins) {
+      Object mixinObj = evaluate(mixinExpr);
+      if (!(mixinObj instanceof LoxMixin)) {
+        throw new RuntimeError(mixinExpr.name,
+                "Can only mix in mixins, not '" + mixinObj + "'.");
+      }
+
+      LoxMixin mixin = (LoxMixin)mixinObj;
+      // Copy all mixin methods into instance methods
+      instanceMethods.putAll(mixin.getMethods());
+    }
+
+    LoxClass metaclass = new LoxClass(
+            stmt.name.lexeme + " metaclass",
+            null,
+            staticMethods,
+            null
+    );
+
+    LoxClass klass = new LoxClass(
+            stmt.name.lexeme,
+            (LoxClass)superclass,
+            new HashMap<>(),  // Empty for now
+            metaclass
+    );
+
     for (Stmt.Function method : stmt.methods) {
 /* Classes interpret-methods < Classes interpreter-method-initializer
       LoxFunction function = new LoxFunction(method, environment);
 */
 //> interpreter-method-initializer
       LoxFunction function = new LoxFunction(method, environment,
-          method.name.lexeme.equals("init"));
+              method.name.lexeme.equals("init"), klass);
 //< interpreter-method-initializer
-      methods.put(method.name.lexeme, function);
-    }
+      if (method.isStatic) {
+        staticMethods.put(method.name.lexeme, function);
+      } else {
+        instanceMethods.put(method.name.lexeme, function);
+      }
 
+    }
+    klass = new LoxClass(
+            stmt.name.lexeme,
+            (LoxClass)superclass,
+            instanceMethods,
+            metaclass
+    );
 /* Classes interpret-methods < Inheritance interpreter-construct-class
     LoxClass klass = new LoxClass(stmt.name.lexeme, methods);
 */
 //> Inheritance interpreter-construct-class
-    LoxClass klass = new LoxClass(stmt.name.lexeme,
-        (LoxClass)superclass, methods);
+
 //> end-superclass-environment
 
     if (superclass != null) {
@@ -195,8 +232,7 @@ private static class LocalInfo {
     LoxFunction function = new LoxFunction(stmt, environment);
 */
 //> Classes construct-function
-    LoxFunction function = new LoxFunction(stmt, environment,
-                                           false);
+    LoxFunction function = new LoxFunction(stmt, environment, false, null);
 //< Classes construct-function
     environment.define(stmt.name.lexeme, function, true);
     return null;
@@ -354,6 +390,14 @@ private static class LocalInfo {
         checkNumberOperands(expr.operator, left, right);
 //< check-star-operand
         return (double)left * (double)right;
+
+      case PERCENT:
+        checkNumberOperands(expr.operator, left, right);
+        if ((double)right == 0) {
+          throw new RuntimeError(expr.operator,
+                  "Modulo by zero.");
+        }
+        return (double)left % (double)right;
     }
 
     // Unreachable.
@@ -412,7 +456,7 @@ private static class LocalInfo {
   public Object visitGetExpr(Expr.Get expr) {
     Object object = evaluate(expr.object);
     if (object instanceof LoxInstance) {
-      return ((LoxInstance) object).get(expr.name);
+      return ((LoxInstance) object).get(expr.name, this);
     }
 
     throw new RuntimeError(expr.name,
@@ -523,7 +567,67 @@ private static class LocalInfo {
     return new LoxFunction(expr, environment);
   }
 
+  @Override
+  public Object visitInnerExpr(Expr.Inner expr) {
+    return new LoxCallable() {
+      @Override
+      public int arity() {
+        return 0;
+      }
+
+      @Override
+      public Object call(Interpreter interpreter, List<Object> arguments) {
+        Object methodNameObj = environment.getIfExists("__current_method__");
+        Object definingClassObj = environment.getIfExists("__defining_class__");
+
+        if (methodNameObj == null || definingClassObj == null) {
+          throw new RuntimeError(expr.keyword,
+                  "Can only use 'inner' inside a method.");
+        }
+
+        String methodName = (String)methodNameObj;
+        LoxClass definingClass = (LoxClass)definingClassObj;
+
+        Object thisObj = environment.getIfExists("this");
+        if (!(thisObj instanceof LoxInstance)) {
+          throw new RuntimeError(expr.keyword,
+                  "Can only use 'inner' inside a method.");
+        }
+
+        LoxInstance instance = (LoxInstance)thisObj;
+        LoxClass actualClass = instance.klass;
+
+        LoxFunction innerMethod = actualClass.findInnerMethod(
+                methodName, definingClass);
+
+        if (innerMethod == null) {
+          return null;
+        }
+
+        return innerMethod.bind(instance).call(interpreter, new ArrayList<>());
+      }
+
+      @Override
+      public String toString() {
+        return "<inner>";
+      }
+    };
+  }
+
+  @Override
+  public Void visitMixinStmt(Stmt.Mixin stmt) {
+    Map<String, LoxFunction> methods = new HashMap<>();
+    for (Stmt.Function method : stmt.methods) {
+      LoxFunction function = new LoxFunction(method, environment, false, null);
+      methods.put(method.name.lexeme, function);
+    }
+
+    LoxMixin mixin = new LoxMixin(stmt.name.lexeme, methods);
+    environment.define(stmt.name.lexeme, mixin, true);
+    return null;
+  }
   //> Resolving and Binding look-up-variable
+
   private Object lookUpVariable(Token name, Expr expr) {
     LocalInfo info = locals.get(expr);
     if (info != null) {

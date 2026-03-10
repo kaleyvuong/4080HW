@@ -1,11 +1,12 @@
 //> Classes lox-instance
 package com.craftinginterpreters.lox;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
 class LoxInstance {
-  private LoxClass klass;
+  LoxClass klass;
 //> lox-instance-fields
   private final Map<String, Object> fields = new HashMap<>();
 //< lox-instance-fields
@@ -15,7 +16,7 @@ class LoxInstance {
   }
 
 //> lox-instance-get-property
-  Object get(Token name) {
+  Object get(Token name, Interpreter interpreter) {
     if (fields.containsKey(name.lexeme)) {
       return fields.get(name.lexeme);
     }
@@ -26,7 +27,13 @@ class LoxInstance {
     if (method != null) return method;
 */
 //> lox-instance-bind-method
-    if (method != null) return method.bind(this);
+    if (method != null) {
+      LoxFunction bound = method.bind(this);
+      if (bound.isGetter()) {
+        return bound.call(interpreter, new ArrayList<>());
+      }
+      return bound;
+    }
 //< lox-instance-bind-method
 
 //< lox-instance-get-method

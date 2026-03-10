@@ -79,7 +79,9 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
   @Override
   public String visitFunctionStmt(Stmt.Function stmt) {
     StringBuilder builder = new StringBuilder();
-    builder.append("(fun " + stmt.name.lexeme + "(");
+    builder.append("(");
+    if (stmt.isStatic) builder.append("static ");
+    builder.append("fun " + stmt.name.lexeme + "(");
 
     for (Token param : stmt.params) {
       if (param != stmt.params.get(0)) builder.append(" ");
@@ -255,7 +257,25 @@ class AstPrinter implements Expr.Visitor<String>, Stmt.Visitor<String> {
     return builder.toString();
   }
 
+  @Override
+  public String visitInnerExpr(Expr.Inner expr) {
+    return null;
+  }
+
   //< Statements and State omit
+
+  @Override
+  public String visitMixinStmt(Stmt.Mixin stmt) {
+    StringBuilder builder = new StringBuilder();
+    builder.append("(mixin " + stmt.name.lexeme);
+
+    for (Stmt.Function method : stmt.methods) {
+      builder.append(" " + method.accept(this));
+    }
+
+    builder.append(")");
+    return builder.toString();
+  }
 //< visit-methods
 //> print-utilities
   private String parenthesize(String name, Expr... exprs) {

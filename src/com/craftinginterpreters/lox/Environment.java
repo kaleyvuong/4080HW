@@ -48,6 +48,19 @@ class Environment {
   }
 
 //< environment-get
+
+  Object getIfExists(String name) {
+    if (values.containsKey(name)) {
+      Variable var = values.get(name);
+      if (var.initialized) {
+        return var.value;
+      }
+    }
+    if (enclosing != null) {
+      return enclosing.getIfExists(name);
+    }
+    return null;  // Return null instead of throwing
+  }
 //> environment-assign
   void assign(Token name, Object value) {
     if (values.containsKey(name.lexeme)) {

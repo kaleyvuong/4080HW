@@ -8,7 +8,7 @@ import java.util.Map;
 class LoxClass {
 */
 //> lox-class-callable
-class LoxClass implements LoxCallable {
+class LoxClass extends LoxInstance implements LoxCallable {
 //< lox-class-callable
   final String name;
 //> Inheritance lox-class-superclass-field
@@ -23,12 +23,14 @@ class LoxClass implements LoxCallable {
 //> lox-class-methods
   private final Map<String, LoxFunction> methods;
 
+
 /* Classes lox-class-methods < Inheritance lox-class-constructor
   LoxClass(String name, Map<String, LoxFunction> methods) {
 */
 //> Inheritance lox-class-constructor
   LoxClass(String name, LoxClass superclass,
-           Map<String, LoxFunction> methods) {
+           Map<String, LoxFunction> methods, LoxClass metaclass) {
+    super(metaclass);
     this.superclass = superclass;
 //< Inheritance lox-class-constructor
     this.name = name;
@@ -37,6 +39,11 @@ class LoxClass implements LoxCallable {
 //< lox-class-methods
 //> lox-class-find-method
   LoxFunction findMethod(String name) {
+    if (superclass != null) {
+      LoxFunction method = superclass.findMethod(name);
+      if (method != null) return method;
+    }
+
     if (methods.containsKey(name)) {
       return methods.get(name);
     }
@@ -50,6 +57,41 @@ class LoxClass implements LoxCallable {
     return null;
   }
 //< lox-class-find-method
+
+  LoxFunction findInnerMethod(String methodName, LoxClass startingClass) {
+    if (this == startingClass) {
+      return null;
+    }
+
+    LoxClass current = this;
+    boolean foundStart = false;
+
+    while (current != null) {
+      if (current == startingClass) {
+        foundStart = true;
+        break;
+      }
+      current = current.superclass;
+    }
+
+    if (!foundStart) {
+      return null;
+    }
+
+    return findInnerHelper(methodName, startingClass, this);
+  }
+
+  private LoxFunction findInnerHelper(String methodName, LoxClass from, LoxClass to) {
+    if (from == to) {
+      return to.methods.get(methodName);
+    }
+
+    LoxFunction inner = findInnerHelper(methodName, from, to.superclass);
+    if (inner != null) return inner;
+
+    return to.methods.get(methodName);
+  }
+
 
   @Override
   public String toString() {

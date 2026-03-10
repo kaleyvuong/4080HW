@@ -31,6 +31,10 @@ class Scanner {
     keywords.put("var",    VAR);
     keywords.put("while",  WHILE);
     keywords.put("break", BREAK);
+    keywords.put("mixin", MIXIN);
+    keywords.put("with", WITH);
+    keywords.put("inner", INNER);
+
   }
 //< keyword-map
   private final String source;
@@ -69,7 +73,8 @@ class Scanner {
       case '-': addToken(MINUS); break;
       case '+': addToken(PLUS); break;
       case ';': addToken(SEMICOLON); break;
-      case '*': addToken(STAR); break; // [slash]
+      case '*': addToken(STAR); break;
+      case '%': addToken(PERCENT); break;
 //> two-char-tokens
       case '!':
         addToken(match('=') ? BANG_EQUAL : BANG);

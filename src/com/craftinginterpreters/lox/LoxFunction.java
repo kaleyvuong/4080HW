@@ -3,45 +3,65 @@ package com.craftinginterpreters.lox;
 import java.util.List;
 
 class LoxFunction implements LoxCallable {
-  private final String name;  // Add this field - may be null for lambdas
-  private final List<Token> params;  // Add this field
-  private final List<Stmt> body;  // Add this field
+  private final String name;
+  private final List<Token> params;
+  private final List<Stmt> body;
   private final Environment closure;
   private final boolean isInitializer;
+  private final boolean isGetter;
+  private final LoxClass definingClass;
 
   // EXISTING constructor for named functions
-  LoxFunction(Stmt.Function declaration, Environment closure, boolean isInitializer) {
+  LoxFunction(Stmt.Function declaration, Environment closure, boolean isInitializer, LoxClass definingClass) {
     this.isInitializer = isInitializer;
     this.closure = closure;
-    this.name = declaration.name.lexeme;  // Extract these from declaration
+    this.name = declaration.name.lexeme;
     this.params = declaration.params;
     this.body = declaration.body;
+    this.isGetter = declaration.isGetter;
+    this.definingClass = definingClass;
   }
 
   // NEW constructor for lambdas
   LoxFunction(Expr.Lambda lambda, Environment closure) {
+    this.isGetter = false;
     this.name = null;  // Anonymous
     this.params = lambda.params;
     this.body = lambda.body;
     this.closure = closure;
     this.isInitializer = false;
+    this.definingClass = null;
   }
 
   // PRIVATE constructor for bind() - helper to avoid reconstructing declaration
   private LoxFunction(String name, List<Token> params, List<Stmt> body,
-                      Environment closure, boolean isInitializer) {
+                      Environment closure, boolean isInitializer, boolean isGetter, LoxClass definingClass) {
     this.name = name;
     this.params = params;
     this.body = body;
     this.closure = closure;
     this.isInitializer = isInitializer;
+    this.isGetter = isGetter;
+    this.definingClass = definingClass;
   }
 
   LoxFunction bind(LoxInstance instance) {
     Environment environment = new Environment(closure);
     environment.define("this", instance, true);
     // Use private constructor instead of recreating Stmt.Function
-    return new LoxFunction(name, params, body, environment, isInitializer);
+    return new LoxFunction(name, params, body, environment, isInitializer, isGetter, definingClass);
+  }
+
+  public boolean isGetter() {
+    return isGetter;
+  }
+
+  String getName() {
+    return name;
+  }
+
+  LoxClass getDefiningClass() {
+    return definingClass;
   }
 
   @Override
@@ -59,6 +79,11 @@ class LoxFunction implements LoxCallable {
     Environment environment = new Environment(closure);
     for (int i = 0; i < params.size(); i++) {
       environment.define(params.get(i).lexeme, arguments.get(i), true);
+    }
+
+    if (definingClass != null && name != null) {
+      environment.define("__current_method__", name, true);
+      environment.define("__defining_class__", definingClass, true);
     }
 
     try {

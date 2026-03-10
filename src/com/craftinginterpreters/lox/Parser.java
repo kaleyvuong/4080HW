@@ -62,6 +62,7 @@ class Parser {
 //> Classes match-class
       if (match(CLASS)) return classDeclaration();
 //< Classes match-class
+      if (match(MIXIN)) return mixinDeclaration();
 //> Functions match-fun
       if (match(FUN)) return function("function");
 //< Functions match-fun
@@ -74,6 +75,19 @@ class Parser {
     }
   }
 //< Statements and State declaration
+
+  private Stmt mixinDeclaration() {
+    Token name = consume(IDENTIFIER, "Expect mixin name.");
+    consume(LEFT_BRACE, "Expect '{' before mixin body.");
+
+    List<Stmt.Function> methods = new ArrayList<>();
+    while (!check(RIGHT_BRACE) && !isAtEnd()) {
+      methods.add(function("method"));
+    }
+
+    consume(RIGHT_BRACE, "Expect '}' after mixin body.");
+    return new Stmt.Mixin(name, methods);
+  }
 //> Classes parse-class-declaration
   private Stmt classDeclaration() {
     Token name = consume(IDENTIFIER, "Expect class name.");
@@ -86,11 +100,24 @@ class Parser {
     }
 
 //< Inheritance parse-superclass
+
+    List<Expr.Variable> mixins = new ArrayList<>();
+    if (match(WITH)) {
+      do {
+        consume(IDENTIFIER, "Expect mixin name.");
+        mixins.add(new Expr.Variable(previous()));
+      } while (match(COMMA));
+    }
+
     consume(LEFT_BRACE, "Expect '{' before class body.");
 
     List<Stmt.Function> methods = new ArrayList<>();
     while (!check(RIGHT_BRACE) && !isAtEnd()) {
-      methods.add(function("method"));
+      boolean isStatic = false;
+      if (match(CLASS)) {  // Check for 'class' keyword
+        isStatic = true;
+      }
+      methods.add(function("method", isStatic));
     }
 
     consume(RIGHT_BRACE, "Expect '}' after class body.");
@@ -99,7 +126,7 @@ class Parser {
     return new Stmt.Class(name, methods);
 */
 //> Inheritance construct-class-ast
-    return new Stmt.Class(name, superclass, methods);
+    return new Stmt.Class(name, superclass, mixins, methods);
 //< Inheritance construct-class-ast
   }
 //< Classes parse-class-declaration
@@ -257,29 +284,35 @@ class Parser {
   }
 //< Statements and State parse-expression-statement
 //> Functions parse-function
-  private Stmt.Function function(String kind) {
+  private Stmt.Function function(String kind, boolean isStatic) {
     Token name = consume(IDENTIFIER, "Expect " + kind + " name.");
 //> parse-parameters
-    consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
-    List<Token> parameters = new ArrayList<>();
-    if (!check(RIGHT_PAREN)) {
-      do {
-        if (parameters.size() >= 255) {
-          error(peek(), "Can't have more than 255 parameters.");
-        }
+    boolean isGetter = !check(LEFT_PAREN);
 
-        parameters.add(
-            consume(IDENTIFIER, "Expect parameter name."));
-      } while (match(COMMA));
+    List<Token> parameters = new ArrayList<>();
+    if (!isGetter) {
+      consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+      if (!check(RIGHT_PAREN)) {
+        do {
+          if (parameters.size() >= 255) {
+            error(peek(), "Can't have more than 255 parameters.");
+          }
+          parameters.add(
+                  consume(IDENTIFIER, "Expect parameter name."));
+        } while (match(COMMA));
+      }
+      consume(RIGHT_PAREN, "Expect ')' after parameters.");
     }
-    consume(RIGHT_PAREN, "Expect ')' after parameters.");
 //< parse-parameters
 //> parse-body
 
     consume(LEFT_BRACE, "Expect '{' before " + kind + " body.");
     List<Stmt> body = block();
-    return new Stmt.Function(name, parameters, body);
+    return new Stmt.Function(name, parameters, body, isStatic, isGetter);
 //< parse-body
+  }
+  private Stmt.Function function(String kind) {
+    return function(kind, false);  // Non-static by default
   }
 //< Functions parse-function
 //> Statements and State block
@@ -444,15 +477,15 @@ class Parser {
     }
     Expr expr = unary();
 
-    while (match(SLASH, STAR)) {
+    while (match(SLASH, STAR, PERCENT)) {
       Token operator = previous();
       Expr right = unary();
       expr = new Expr.Binary(expr, operator, right);
     }
-
     return expr;
   }
 //< factor
+
 //> unary
   private Expr unary() {
     if (match(BANG, MINUS)) {
@@ -519,16 +552,10 @@ class Parser {
     if (match(NUMBER, STRING)) {
       return new Expr.Literal(previous().literal);
     }
-//> Inheritance parse-super
-
-    if (match(SUPER)) {
+    if (match(INNER)) {
       Token keyword = previous();
-      consume(DOT, "Expect '.' after 'super'.");
-      Token method = consume(IDENTIFIER,
-          "Expect superclass method name.");
-      return new Expr.Super(keyword, method);
+      return new Expr.Inner(keyword);
     }
-//< Inheritance parse-super
 //> Classes parse-this
 
     if (match(THIS)) return new Expr.This(previous());
