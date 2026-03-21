@@ -51,8 +51,9 @@ typedef struct {
   
 //< Calls and Functions frame-array
 //> vm-stack
-  Value stack[STACK_MAX];
+  Value* stack;
   Value* stackTop;
+  int stackCapacity;
 //< vm-stack
 //> Global Variables vm-globals
   Table globals;

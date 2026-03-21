@@ -2,6 +2,7 @@
 //> Types of Values include-stdarg
 #include <stdarg.h>
 //< Types of Values include-stdarg
+#include <stdlib.h>
 //> vm-include-stdio
 #include <stdio.h>
 //> Strings vm-include-string
@@ -24,6 +25,10 @@
 #include "memory.h"
 //< Strings vm-include-object-memory
 #include "vm.h"
+
+#define INITIAL_STACK_CAPACITY 256
+#define STACK_GROWTH_FACTOR 2
+
 
 VM vm; // [one]
 //> Calls and Functions clock-native
@@ -94,8 +99,44 @@ static void defineNative(const char* name, NativeFn function) {
   pop();
 }
 //< Calls and Functions define-native
+static void ensureStackCapacity() {
+  int currentSize = (int)(vm.stackTop - vm.stack);
+  
+  // Check if we need to grow
+  if (currentSize >= vm.stackCapacity) {
+    int oldCapacity = vm.stackCapacity;
+    vm.stackCapacity *= STACK_GROWTH_FACTOR;
+    
+    // Reallocate stack
+    Value* newStack = (Value*)realloc(vm.stack, 
+                                      sizeof(Value) * vm.stackCapacity);
+    if (newStack == NULL) {
+      fprintf(stderr, "Stack overflow - failed to grow stack.\n");
+      exit(1);
+    }
+    
+    // Update pointers
+    vm.stack = newStack;
+    vm.stackTop = vm.stack + currentSize;
+    
+    // Update call frame pointers (critical!)
+    for (int i = 0; i < vm.frameCount; i++) {
+      CallFrame* frame = &vm.frames[i];
+      frame->slots = vm.stack + (frame->slots - vm.stack);
+    }
+    
+    printf("[Stack grew from %d to %d]\n", oldCapacity, vm.stackCapacity);
+  }
+}
 
 void initVM() {
+  // Allocate initial stack
+  vm.stackCapacity = INITIAL_STACK_CAPACITY;
+  vm.stack = (Value*)malloc(sizeof(Value) * vm.stackCapacity);
+  if (vm.stack == NULL) {
+    fprintf(stderr, "Failed to allocate VM stack.\n");
+    exit(1);
+  }
 //> call-reset-stack
   resetStack();
 //< call-reset-stack
@@ -145,9 +186,13 @@ void freeVM() {
 //> Strings call-free-objects
   freeObjects();
 //< Strings call-free-objects
+  free(vm.stack);
+  vm.stack = NULL;
+  vm.stackTop = NULL;
 }
 //> push
 void push(Value value) {
+  ensureStackCapacity();
   *vm.stackTop = value;
   vm.stackTop++;
 }
@@ -683,7 +728,7 @@ static InterpretResult run() {
 //< Types of Values op-arithmetic
 //> Types of Values op-not
       case OP_NOT:
-        push(BOOL_VAL(isFalsey(pop())));
+        vm.stackTop[-1] = BOOL_VAL(isFalsey(vm.stackTop[-1]));
         break;
 //< Types of Values op-not
 //> Types of Values op-negate
@@ -692,7 +737,7 @@ static InterpretResult run() {
           runtimeError("Operand must be a number.");
           return INTERPRET_RUNTIME_ERROR;
         }
-        push(NUMBER_VAL(-AS_NUMBER(pop())));
+        vm.stackTop[-1] = NUMBER_VAL(-AS_NUMBER(vm.stackTop[-1]));
         break;
 //< Types of Values op-negate
 //> Global Variables interpret-print
