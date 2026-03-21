@@ -17,6 +17,7 @@
 //< A Virtual Machine main-include-vm
 //> Scanning on Demand repl
 
+
 static void repl() {
   char line[1024];
   for (;;) {
@@ -131,6 +132,47 @@ int main(int argc, const char* argv[]) {
 /* A Virtual Machine main-interpret < Scanning on Demand args
   interpret(&chunk);
 */
+
+  // Chunk testChunk;
+  // initChunk(&testChunk);
+  
+  // writeChunk(&testChunk, 1, 10);  // 3 instructions on line 10
+  // writeChunk(&testChunk, 2, 10);
+  // writeChunk(&testChunk, 3, 10);
+  // writeChunk(&testChunk, 4, 15);  // 2 instructions on line 15
+  // writeChunk(&testChunk, 5, 15);
+  // writeChunk(&testChunk, 6, 20);  // 1 instruction on line 20
+  
+  // printf("\nTesting getLine():\n");
+  // for (int i = 0; i < testChunk.count; i++) {
+  //   printf("Instruction %d: line %d\n", i, getLine(&testChunk, i));
+  // }
+  
+  // freeChunk(&testChunk);
+
+
+  Chunk testChunk2;
+  initChunk(&testChunk2);
+  
+  printf("\nTesting writeConstant():\n");
+  
+  // Add a few constants (will use OP_CONSTANT)
+  writeConstant(&testChunk2, NUMBER_VAL(1.5), 1);
+  writeConstant(&testChunk2, NUMBER_VAL(2.5), 1);
+  writeConstant(&testChunk2, NUMBER_VAL(3.5), 1);
+  
+  printf("Added 3 constants using OP_CONSTANT\n");
+  printf("Chunk has %d instructions, %d constants\n", 
+         testChunk2.count, testChunk2.constants.count);
+  
+  // Simulate having 256+ constants by manually setting up the array
+  // (In real use, you'd add 256 constants, but that's tedious for testing)
+  
+  // For now, let's just verify the small constants work
+  disassembleChunk(&testChunk2, "writeConstant test");
+  
+  freeChunk(&testChunk2);
+
 //> Scanning on Demand args
   if (argc == 1) {
     repl();
@@ -140,12 +182,12 @@ int main(int argc, const char* argv[]) {
     fprintf(stderr, "Usage: clox [path]\n");
     exit(64);
   }
-  
-  freeVM();
 //< Scanning on Demand args
 /* A Virtual Machine main-free-vm < Scanning on Demand args
   freeVM();
 */
+  
+  freeVM();
 /* Chunks of Bytecode main-chunk < Scanning on Demand args
   freeChunk(&chunk);
 */

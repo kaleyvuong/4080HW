@@ -11,6 +11,7 @@
 typedef enum {
 //> op-constant
   OP_CONSTANT,
+  OP_CONSTANT_LONG,
 //< op-constant
 //> Types of Values literal-ops
   OP_NIL,
@@ -111,7 +112,10 @@ typedef struct {
 //< count-and-capacity
   uint8_t* code;
 //> chunk-lines
-  int* lines;
+  int* lineNumbers;
+  int* lineCounts;
+  int lineCapacity;
+  int lineCount;
 //< chunk-lines
 //> chunk-constants
   ValueArray constants;
@@ -134,5 +138,7 @@ void writeChunk(Chunk* chunk, uint8_t byte, int line);
 //> add-constant-h
 int addConstant(Chunk* chunk, Value value);
 //< add-constant-h
+int getLine(Chunk* chunk, int instruction);
+void writeConstant(Chunk* chunk, Value value, int line);
 
 #endif

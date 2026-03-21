@@ -73,7 +73,7 @@ static void runtimeError(const char* format, ...) {
 //< Closures runtime-error-function
     size_t instruction = frame->ip - function->chunk.code - 1;
     fprintf(stderr, "[line %d] in ", // [minus]
-            function->chunk.lines[instruction]);
+            getLine(&function->chunk, (int)instruction));
     if (function->name == NULL) {
       fprintf(stderr, "script\n");
     } else {
@@ -487,6 +487,16 @@ static InterpretResult run() {
 //< push-constant
         break;
       }
+
+      case OP_CONSTANT_LONG: {
+      // Read 24-bit index
+      uint32_t constantIndex = READ_BYTE() |
+                               (READ_BYTE() << 8) |
+                               (READ_BYTE() << 16);
+      Value constant = frame->closure->function->chunk.constants.values[constantIndex];
+      push(constant);
+      break;
+    }
 //< op-constant
 //> Types of Values interpret-literals
       case OP_NIL: push(NIL_VAL); break;

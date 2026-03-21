@@ -27,6 +27,17 @@ static int constantInstruction(const char* name, Chunk* chunk,
   return offset + 2;
 //< return-after-operand
 }
+static int constantLongInstruction(const char* name, Chunk* chunk,
+                                   int offset) {
+  // Read 24-bit constant index (little-endian)
+  uint32_t constant = chunk->code[offset + 1] |
+                      (chunk->code[offset + 2] << 8) |
+                      (chunk->code[offset + 3] << 16);
+  printf("%-16s %4d '", name, constant);
+  printValue(chunk->constants.values[constant]);
+  printf("'\n");
+  return offset + 4;  // opcode + 3 bytes for index
+}
 //< constant-instruction
 //> Methods and Initializers invoke-instruction
 static int invokeInstruction(const char* name, Chunk* chunk,
@@ -68,10 +79,10 @@ int disassembleInstruction(Chunk* chunk, int offset) {
   printf("%04d ", offset);
 //> show-location
   if (offset > 0 &&
-      chunk->lines[offset] == chunk->lines[offset - 1]) {
+      getLine(chunk, offset) == getLine(chunk, offset - 1)) {
     printf("   | ");
   } else {
-    printf("%4d ", chunk->lines[offset]);
+    printf("%4d ", getLine(chunk, offset));
   }
 //< show-location
   
@@ -80,6 +91,8 @@ int disassembleInstruction(Chunk* chunk, int offset) {
 //> disassemble-constant
     case OP_CONSTANT:
       return constantInstruction("OP_CONSTANT", chunk, offset);
+    case OP_CONSTANT_LONG:
+      return constantLongInstruction("OP_CONSTANT_LONG", chunk, offset);
 //< disassemble-constant
 //> Types of Values disassemble-literals
     case OP_NIL:
