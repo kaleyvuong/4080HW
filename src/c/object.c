@@ -110,7 +110,7 @@ static ObjString* allocateString(char* chars, int length) {
 //> allocate-string
 //> Hash Tables allocate-string
 static ObjString* allocateString(char* chars, int length,
-                                 uint32_t hash) {
+                                 uint32_t hash, bool ownsChars) {
 //< Hash Tables allocate-string
   ObjString* string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
   string->length = length;
@@ -120,7 +120,7 @@ static ObjString* allocateString(char* chars, int length,
 //< Hash Tables allocate-store-hash
 //> Hash Tables allocate-store-string
 //> Garbage Collection push-string
-
+  string->ownsChars = ownsChars; 
   push(OBJ_VAL(string));
 //< Garbage Collection push-string
   tableSet(&vm.strings, string, NIL_VAL);
@@ -158,7 +158,7 @@ ObjString* takeString(char* chars, int length) {
   }
 
 //< take-string-intern
-  return allocateString(chars, length, hash);
+  return allocateString(chars, length, hash, true);
 //< Hash Tables take-string-hash
 }
 //< take-string
@@ -179,7 +179,7 @@ ObjString* copyString(const char* chars, int length) {
   return allocateString(heapChars, length);
 */
 //> Hash Tables copy-string-allocate
-  return allocateString(heapChars, length, hash);
+  return allocateString(heapChars, length, hash, true);
 //< Hash Tables copy-string-allocate
 }
 //> Closures new-upvalue
@@ -195,6 +195,14 @@ ObjUpvalue* newUpvalue(Value* slot) {
   return upvalue;
 }
 //< Closures new-upvalue
+
+ObjString* pointString(const char* chars, int length) {
+  uint32_t hash = hashString(chars, length);
+  ObjString* interned = tableFindString(&vm.strings, chars, length, hash);
+  if (interned != NULL) return interned;
+  return allocateString((char*)chars, length, hash, false);
+}
+
 //> Calls and Functions print-function-helper
 static void printFunction(ObjFunction* function) {
 //> print-script

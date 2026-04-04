@@ -3,7 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "object.h"
+#include "memory.h"
 //< Scanning on Demand main-includes
 #include "common.h"
 //> main-include-chunk
@@ -173,20 +174,38 @@ int main(int argc, const char* argv[]) {
   
   // freeChunk(&testChunk2);
 
-  // Stress test: push 1000 values
-  printf("\nTesting stack growth:\n");
-  for (int i = 0; i < 1000; i++) {
-    push(NUMBER_VAL(i));
-  }
-  printf("Pushed 1000 values successfully!\n");
-  printf("Stack capacity: %d\n", vm.stackCapacity);
+  // // Stress test: push 1000 values
+  // printf("\nTesting stack growth:\n");
+  // for (int i = 0; i < 1000; i++) {
+  //   push(NUMBER_VAL(i));
+  // }
+  // printf("Pushed 1000 values successfully!\n");
+  // printf("Stack capacity: %d\n", vm.stackCapacity);
 
-  // Clean up
-  for (int i = 0; i < 1000; i++) {
-    pop();
-  }
+  // // Clean up
+  // for (int i = 0; i < 1000; i++) {
+  //   pop();
+  // }
 
+    // Test ownsChars behavior
+  printf("\n--- String ownership test ---\n");
 
+  // copyString: should own its chars (heap copy)
+  ObjString* owned = copyString("hello", 5);
+  printf("copyString ownsChars: %s\n", owned->ownsChars ? "true" : "false");
+
+  // takeString: should own its chars (heap allocated buffer)
+  char* buf = ALLOCATE(char, 6);
+  memcpy(buf, "world", 5);
+  buf[5] = '\0';
+  ObjString* taken = takeString(buf, 5);
+  printf("takeString ownsChars: %s\n", taken->ownsChars ? "true" : "false");
+
+  // pointString: should NOT own its chars
+  ObjString* pointed = pointString("literal", 7);
+  printf("pointString ownsChars: %s\n", pointed->ownsChars ? "true" : "false");
+
+  printf("--- end ---\n");
 
 //> Scanning on Demand args
   if (argc == 1) {

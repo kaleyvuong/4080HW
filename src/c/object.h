@@ -127,6 +127,7 @@ struct ObjString {
 //> Hash Tables obj-string-hash
   uint32_t hash;
 //< Hash Tables obj-string-hash
+  bool ownsChars; 
 };
 //< obj-string
 //> Closures obj-upvalue
@@ -202,6 +203,7 @@ ObjString* takeString(char* chars, int length);
 //< take-string-h
 //> copy-string-h
 ObjString* copyString(const char* chars, int length);
+ObjString* pointString(const char* chars, int length);
 //> Closures new-upvalue-h
 ObjUpvalue* newUpvalue(Value* slot);
 //< Closures new-upvalue-h
