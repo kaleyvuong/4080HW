@@ -23,7 +23,7 @@ static Obj* allocateObject(size_t size, ObjType type) {
   object->isMarked = false;
 //< Garbage Collection init-is-marked
 //> add-to-list
-  
+  object->hash = 0; 
   object->next = vm.objects;
   vm.objects = object;
 //< add-to-list

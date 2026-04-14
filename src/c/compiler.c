@@ -413,8 +413,22 @@ static void parsePrecedence(Precedence precedence);
 //< Compiling Expressions forward-declarations
 //> Global Variables identifier-constant
 static uint8_t identifierConstant(Token* name) {
-  return makeConstant(OBJ_VAL(copyString(name->start,
-                                         name->length)));
+  // String interning ensures identical strings share the same pointer
+  ObjString* identifier = copyString(name->start, name->length);
+  
+  // Search existing constants
+  ValueArray* constants = &currentChunk()->constants;
+  for (int i = 0; i < constants->count; i++) {
+    if (IS_STRING(constants->values[i])) {
+      // Pointer comparison works because of string interning!
+      if (AS_STRING(constants->values[i]) == identifier) {
+        return (uint8_t)i;
+      }
+    }
+  }
+  
+  // Not found, add it
+  return makeConstant(OBJ_VAL(identifier));
 }
 //< Global Variables identifier-constant
 //> Local Variables identifiers-equal

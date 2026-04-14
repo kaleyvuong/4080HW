@@ -118,6 +118,7 @@ typedef struct {
 //> Strings union-object
     Obj* obj;
 //< Strings union-object
+    uint32_t hash; 
   } as; // [as]
 } Value;
 //< Types of Values value

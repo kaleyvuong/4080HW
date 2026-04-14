@@ -96,6 +96,7 @@ struct Obj {
 //> next-field
   struct Obj* next;
 //< next-field
+  uint32_t hash;
 };
 //> Calls and Functions obj-function
 
