@@ -575,6 +575,21 @@ static InterpretResult run() {
         break;
       }
 //< Local Variables interpret-set-local
+      case OP_GET_LOCAL_LONG: {
+        uint16_t slot = READ_SHORT();
+        push(frame->slots[slot]);
+      break;
+      }
+
+      case OP_SET_LOCAL_LONG: {
+        uint16_t slot = READ_SHORT();
+        frame->slots[slot] = peek(0);
+      break;
+      }
+      case OP_DUP: {
+        push(peek(0));
+        break;
+      }
 //> Global Variables interpret-get-global
       case OP_GET_GLOBAL: {
         ObjString* name = READ_STRING();

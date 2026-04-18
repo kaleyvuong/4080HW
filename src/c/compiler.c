@@ -73,12 +73,14 @@ typedef struct {
 //> Closures is-captured-field
   bool isCaptured;
 //< Closures is-captured-field
+  bool isMutable;
 } Local;
 //< Local Variables local-struct
 //> Closures upvalue-struct
 typedef struct {
   uint8_t index;
   bool isLocal;
+  bool isMutable;
 } Upvalue;
 //< Closures upvalue-struct
 //> Calls and Functions function-type-enum
@@ -107,15 +109,18 @@ typedef struct Compiler {
   FunctionType type;
 
 //< Calls and Functions function-fields
-  Local locals[UINT8_COUNT];
+  #define MAX_LOCALS 65536
+  Local locals[MAX_LOCALS];
   int localCount;
 //> Closures upvalues-array
   Upvalue upvalues[UINT8_COUNT];
 //< Closures upvalues-array
   int scopeDepth;
+  Table* globalConstants;
 } Compiler;
 //< Local Variables compiler-struct
 //> Methods and Initializers class-compiler-struct
+static Table globalConstants;
 
 typedef struct ClassCompiler {
   struct ClassCompiler* enclosing;
@@ -124,6 +129,15 @@ typedef struct ClassCompiler {
 //< Superclasses has-superclass
 } ClassCompiler;
 //< Methods and Initializers class-compiler-struct
+
+typedef struct Loop {
+  int start;
+  int continueTarget;
+  int scopeDepth;
+  struct Loop* enclosing;
+} Loop;
+
+static Loop* currentLoop = NULL;
 
 Parser parser;
 //< Compiling Expressions parser
@@ -456,7 +470,7 @@ static int resolveLocal(Compiler* compiler, Token* name) {
 //< Local Variables resolve-local
 //> Closures add-upvalue
 static int addUpvalue(Compiler* compiler, uint8_t index,
-                      bool isLocal) {
+                      bool isLocal, bool isMutable) {
   int upvalueCount = compiler->function->upvalueCount;
 //> existing-upvalue
 
@@ -477,6 +491,7 @@ static int addUpvalue(Compiler* compiler, uint8_t index,
 //< too-many-upvalues
   compiler->upvalues[upvalueCount].isLocal = isLocal;
   compiler->upvalues[upvalueCount].index = index;
+  compiler->upvalues[upvalueCount].isMutable = isMutable;
   return compiler->function->upvalueCount++;
 }
 //< Closures add-upvalue
@@ -488,14 +503,16 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
   if (local != -1) {
 //> mark-local-captured
     compiler->enclosing->locals[local].isCaptured = true;
+    bool isMutable = compiler->enclosing->locals[local].isMutable;
 //< mark-local-captured
-    return addUpvalue(compiler, (uint8_t)local, true);
+    return addUpvalue(compiler, (uint8_t)local, true, isMutable);
   }
 
 //> resolve-upvalue-recurse
   int upvalue = resolveUpvalue(compiler->enclosing, name);
   if (upvalue != -1) {
-    return addUpvalue(compiler, (uint8_t)upvalue, false);
+    bool isMutable = compiler->enclosing->upvalues[upvalue].isMutable;
+    return addUpvalue(compiler, (uint8_t)upvalue, false, isMutable);
   }
   
 //< resolve-upvalue-recurse
@@ -505,7 +522,7 @@ static int resolveUpvalue(Compiler* compiler, Token* name) {
 //> Local Variables add-local
 static void addLocal(Token name) {
 //> too-many-locals
-  if (current->localCount == UINT8_COUNT) {
+  if (current->localCount == MAX_LOCALS) {
     error("Too many local variables in function.");
     return;
   }
@@ -522,6 +539,7 @@ static void addLocal(Token name) {
 //> Closures init-is-captured
   local->isCaptured = false;
 //< Closures init-is-captured
+  local->isMutable = true;
 }
 //< Local Variables add-local
 //> Local Variables declare-variable
@@ -752,18 +770,27 @@ static void namedVariable(Token name, bool canAssign) {
 //> Local Variables named-local
   uint8_t getOp, setOp;
   int arg = resolveLocal(current, &name);
+  bool isMutable = true;
   if (arg != -1) {
     getOp = OP_GET_LOCAL;
     setOp = OP_SET_LOCAL;
+    isMutable = current->locals[arg].isMutable;
 //> Closures named-variable-upvalue
   } else if ((arg = resolveUpvalue(current, &name)) != -1) {
     getOp = OP_GET_UPVALUE;
     setOp = OP_SET_UPVALUE;
+    isMutable = current->upvalues[arg].isMutable;
 //< Closures named-variable-upvalue
   } else {
     arg = identifierConstant(&name);
     getOp = OP_GET_GLOBAL;
     setOp = OP_SET_GLOBAL;
+
+    ObjString* varName = AS_STRING(currentChunk()->constants.values[arg]);
+    Value dummy;
+    if (tableGet(&globalConstants, varName, &dummy)) {
+      isMutable = false;
+    }
   }
 //< Local Variables named-local
 /* Global Variables read-named-variable < Global Variables named-variable
@@ -776,6 +803,10 @@ static void namedVariable(Token name, bool canAssign) {
 */
 //> named-variable-can-assign
   if (canAssign && match(TOKEN_EQUAL)) {
+    if (!isMutable) {
+      error("Cannot assign to constant variable.");
+      return;
+    }
 //< named-variable-can-assign
     expression();
 /* Global Variables named-variable < Local Variables emit-set
@@ -789,7 +820,13 @@ static void namedVariable(Token name, bool canAssign) {
     emitBytes(OP_GET_GLOBAL, arg);
 */
 //> Local Variables emit-get
-    emitBytes(getOp, (uint8_t)arg);
+    if (getOp == OP_GET_LOCAL && arg > 255) {
+      emitByte(OP_GET_LOCAL_LONG);
+      emitByte((arg >> 8) & 0xff);
+      emitByte(arg & 0xff);
+    } else {
+      emitBytes(getOp, (uint8_t)arg);
+    }
 //< Local Variables emit-get
   }
 //< named-variable
@@ -1216,6 +1253,29 @@ static void funDeclaration() {
   defineVariable(global);
 }
 //< Calls and Functions fun-declaration
+static void constDeclaration() {
+  uint8_t global = parseVariable("Expect constant name.");
+
+  // const MUST be initialized
+  if (!match(TOKEN_EQUAL)) {
+    error("Constant must be initialized.");
+    return;
+  }
+  
+  expression();
+  consume(TOKEN_SEMICOLON, "Expect ';' after constant declaration.");
+
+  defineVariable(global);
+  
+  if (current->scopeDepth > 0) {
+    ObjString* name = AS_STRING(currentChunk()->constants.values[global]);
+    current->locals[current->localCount - 1].isMutable = false;
+  } else {
+    current->locals[current->localCount - 1].isMutable = false;
+  }
+  defineVariable(global);
+}
+
 //> Global Variables var-declaration
 static void varDeclaration() {
   uint8_t global = parseVariable("Expect variable name.");
@@ -1225,10 +1285,14 @@ static void varDeclaration() {
   } else {
     emitByte(OP_NIL);
   }
-  consume(TOKEN_SEMICOLON,
-          "Expect ';' after variable declaration.");
+  consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration.");
 
   defineVariable(global);
+  
+  // Mark as mutable (default)
+  if (current->scopeDepth > 0) {
+    current->locals[current->localCount - 1].isMutable = true;
+  }
 }
 //< Global Variables var-declaration
 //> Global Variables expression-statement
@@ -1240,9 +1304,12 @@ static void expressionStatement() {
 //< Global Variables expression-statement
 //> Jumping Back and Forth for-statement
 static void forStatement() {
-//> for-begin-scope
   beginScope();
-//< for-begin-scope
+
+  Loop loop;
+  loop.enclosing = currentLoop;
+  loop.scopeDepth = current->scopeDepth;
+
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'.");
 /* Jumping Back and Forth for-statement < Jumping Back and Forth for-initializer
   consume(TOKEN_SEMICOLON, "Expect ';'.");
@@ -1258,6 +1325,7 @@ static void forStatement() {
 //< for-initializer
 
   int loopStart = currentChunk()->count;
+  int continueTarget = loopStart;
 /* Jumping Back and Forth for-statement < Jumping Back and Forth for-exit
   consume(TOKEN_SEMICOLON, "Expect ';'.");
 */
@@ -1280,15 +1348,22 @@ static void forStatement() {
   if (!match(TOKEN_RIGHT_PAREN)) {
     int bodyJump = emitJump(OP_JUMP);
     int incrementStart = currentChunk()->count;
+
     expression();
     emitByte(OP_POP);
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
 
     emitLoop(loopStart);
     loopStart = incrementStart;
+
     patchJump(bodyJump);
+
+    continueTarget = incrementStart;
   }
 //< for-increment
+  loop.start = loopStart;
+  loop.continueTarget = continueTarget;
+  currentLoop = &loop;
 
   statement();
   emitLoop(loopStart);
@@ -1301,10 +1376,31 @@ static void forStatement() {
 
 //< exit-jump
 //> for-end-scope
-  endScope();
+  currentLoop = loop.enclosing;
+endScope();
 //< for-end-scope
 }
 //< Jumping Back and Forth for-statement
+static void continueStatement() {
+  if (currentLoop == NULL) {
+    error("Can't use 'continue' outside of a loop.");
+    return;
+  }
+
+  consume(TOKEN_SEMICOLON, "Expect ';' after 'continue'.");
+
+  // Pop locals declared inside the loop body
+  while (current->scopeDepth > currentLoop->scopeDepth) {
+    if (current->locals[current->localCount - 1].isCaptured) {
+      emitByte(OP_CLOSE_UPVALUE);
+    } else {
+      emitByte(OP_POP);
+    }
+    current->localCount--;
+  }
+
+  emitLoop(currentLoop->continueTarget);
+}
 //> Jumping Back and Forth if-statement
 static void ifStatement() {
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
@@ -1366,22 +1462,30 @@ static void returnStatement() {
 //< Calls and Functions return-statement
 //> Jumping Back and Forth while-statement
 static void whileStatement() {
-//> loop-start
-  int loopStart = currentChunk()->count;
-//< loop-start
+  Loop loop;
+  loop.enclosing = currentLoop;
+  loop.scopeDepth = current->scopeDepth;
+
+  loop.start = currentChunk()->count;
+  loop.continueTarget = loop.start;
+
+  currentLoop = &loop;
+
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
   expression();
   consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
 
   int exitJump = emitJump(OP_JUMP_IF_FALSE);
   emitByte(OP_POP);
+
   statement();
-//> loop
-  emitLoop(loopStart);
-//< loop
+
+  emitLoop(loop.start);
 
   patchJump(exitJump);
   emitByte(OP_POP);
+
+  currentLoop = loop.enclosing;
 }
 //< Jumping Back and Forth while-statement
 //> Global Variables synchronize
@@ -1408,7 +1512,74 @@ static void synchronize() {
     advance();
   }
 }
-//< Global Variables synchronize
+
+static void switchStatement() {
+  consume(TOKEN_LEFT_PAREN, "Expect '(' after 'switch'.");
+  expression(); // switch value stays on stack
+  consume(TOKEN_RIGHT_PAREN, "Expect ')' after value.");
+  consume(TOKEN_LEFT_BRACE, "Expect '{' before switch cases.");
+
+  int endJumps[256];
+  int endJumpCount = 0;
+
+  bool hasDefault = false;
+  int defaultJump = -1;
+
+  while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+    if (match(TOKEN_CASE)) {
+      emitByte(OP_DUP);      // duplicate switch value
+      expression();          // case value
+      emitByte(OP_EQUAL);    // compare
+
+      int jumpIfFalse = emitJump(OP_JUMP_IF_FALSE);
+      emitByte(OP_POP);      // pop comparison result
+
+      consume(TOKEN_COLON, "Expect ':' after case value.");
+
+      while (!check(TOKEN_CASE) &&
+             !check(TOKEN_DEFAULT) &&
+             !check(TOKEN_RIGHT_BRACE)) {
+        statement();
+      }
+
+      // jump to end after executing case
+      endJumps[endJumpCount++] = emitJump(OP_JUMP);
+
+      // patch failed comparison → next case
+      patchJump(jumpIfFalse);
+      emitByte(OP_POP); // pop comparison result
+
+    } else if (match(TOKEN_DEFAULT)) {
+      if (hasDefault) {
+        error("Multiple default cases.");
+      }
+      hasDefault = true;
+
+      consume(TOKEN_COLON, "Expect ':' after default.");
+
+      defaultJump = currentChunk()->count;
+
+      while (!check(TOKEN_CASE) &&
+             !check(TOKEN_RIGHT_BRACE)) {
+        statement();
+      }
+
+    } else {
+      error("Expect 'case' or 'default'.");
+      advance();
+    }
+  }
+
+  consume(TOKEN_RIGHT_BRACE, "Expect '}' after switch.");
+
+  // patch all case exits
+  for (int i = 0; i < endJumpCount; i++) {
+    patchJump(endJumps[i]);
+  }
+
+  emitByte(OP_POP); // pop switch value
+}
+
 //> Global Variables declaration
 static void declaration() {
 //> Classes and Instances match-class
@@ -1417,7 +1588,9 @@ static void declaration() {
 /* Calls and Functions match-fun < Classes and Instances match-class
   if (match(TOKEN_FUN)) {
 */
-  } else if (match(TOKEN_FUN)) {
+  } else if (match(TOKEN_CONST)) {
+    constDeclaration();
+  }  else if (match(TOKEN_FUN)) {
 //< Classes and Instances match-class
 //> Calls and Functions match-fun
     funDeclaration();
@@ -1468,7 +1641,12 @@ static void statement() {
     endScope();
 //< Local Variables parse-block
 //> parse-expressions-statement
-  } else {
+  } else if (match(TOKEN_SWITCH)) {
+      switchStatement();
+  } else if (match(TOKEN_CONTINUE)) {
+    continueStatement();
+  }
+  else {
     expressionStatement();
 //< parse-expressions-statement
   }
@@ -1507,6 +1685,7 @@ ObjFunction* compile(const char* source) {
   initCompiler(&compiler);
 */
 //> Calls and Functions call-init-compiler
+  initTable(&globalConstants);  
   initCompiler(&compiler, TYPE_SCRIPT);
 //< Calls and Functions call-init-compiler
 /* Compiling Expressions init-compile-chunk < Calls and Functions call-init-compiler
@@ -1540,6 +1719,7 @@ ObjFunction* compile(const char* source) {
 */
 //> Calls and Functions call-end-compiler
   ObjFunction* function = endCompiler();
+  freeTable(&globalConstants);
   return parser.hadError ? NULL : function;
 //< Calls and Functions call-end-compiler
 }
