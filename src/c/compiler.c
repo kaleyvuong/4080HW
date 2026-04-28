@@ -1365,7 +1365,9 @@ static void forStatement() {
   loop.continueTarget = continueTarget;
   currentLoop = &loop;
 
+  beginScope();
   statement();
+  endScope();
   emitLoop(loopStart);
 //> exit-jump
 

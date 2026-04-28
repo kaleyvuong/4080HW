@@ -32,8 +32,9 @@
 
 VM vm; // [one]
 //> Calls and Functions clock-native
-static Value clockNative(int argCount, Value* args) {
-  return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+static bool clockNative(int argCount, Value* args, Value* result) {
+  *result = NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+  return true;
 }
 //< Calls and Functions clock-native
 //> reset-stack
@@ -74,7 +75,7 @@ static void runtimeError(const char* format, ...) {
     ObjFunction* function = frame->function;
 */
 //> Closures runtime-error-function
-    ObjFunction* function = frame->closure->function;
+    ObjFunction* function = frame->function;
 //< Closures runtime-error-function
     size_t instruction = frame->ip - function->chunk.code - 1;
     fprintf(stderr, "[line %d] in ", // [minus]
@@ -89,11 +90,68 @@ static void runtimeError(const char* format, ...) {
 //< Calls and Functions runtime-error-stack
   resetStack();
 }
+
+static bool sqrtNative(int argCount, Value* args, Value* result) {
+  if (!IS_NUMBER(args[0])) {
+    runtimeError("sqrt() expects a number.");
+    return false;
+  }
+
+  double x = AS_NUMBER(args[0]);
+  if (x < 0) {
+    runtimeError("sqrt() cannot take negative numbers.");
+    return false;
+  }
+
+  *result = NUMBER_VAL(sqrt(x));
+  return true;
+}
+
+static bool typeNative(int argCount, Value* args, Value* result) {
+  Value value = args[0];
+
+  if (IS_NUMBER(value)) {
+    *result = OBJ_VAL(copyString("number", 6));
+  } else if (IS_BOOL(value)) {
+    *result = OBJ_VAL(copyString("bool", 4));
+  } else if (IS_NIL(value)) {
+    *result = OBJ_VAL(copyString("nil", 3));
+  } else if (IS_OBJ(value)) {
+    switch (OBJ_TYPE(value)) {
+      case OBJ_STRING:
+        *result = OBJ_VAL(copyString("string", 6));
+        break;
+      case OBJ_FUNCTION:
+        *result = OBJ_VAL(copyString("function", 8));
+        break;
+      case OBJ_NATIVE:
+        *result = OBJ_VAL(copyString("native", 6));
+        break;
+      case OBJ_CLOSURE:
+        *result = OBJ_VAL(copyString("closure", 7));
+        break;
+      case OBJ_CLASS:
+        *result = OBJ_VAL(copyString("class", 5));
+        break;
+      case OBJ_INSTANCE:
+        *result = OBJ_VAL(copyString("instance", 8));
+        break;
+      default:
+        *result = OBJ_VAL(copyString("object", 6));
+        break;
+    }
+  } else {
+    *result = OBJ_VAL(copyString("unknown", 7));
+  }
+
+  return true;
+}
+
 //< Types of Values runtime-error
 //> Calls and Functions define-native
-static void defineNative(const char* name, NativeFn function) {
+static void defineNative(const char* name, NativeFn function, int arity) {
   push(OBJ_VAL(copyString(name, (int)strlen(name))));
-  push(OBJ_VAL(newNative(function)));
+  push(OBJ_VAL(newNative(function, arity)));
   tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
   pop();
   pop();
@@ -169,7 +227,8 @@ void initVM() {
 //< Methods and Initializers init-init-string
 //> Calls and Functions define-native-clock
 
-  defineNative("clock", clockNative);
+  defineNative("clock", clockNative, 0);
+  defineNative("type", typeNative, 1);
 //< Calls and Functions define-native-clock
 }
 
@@ -209,46 +268,92 @@ static Value peek(int distance) {
 }
 //< Types of Values peek
 /* Calls and Functions call < Closures call-signature
-static bool call(ObjFunction* function, int argCount) {
+static bool callClosure(ObjFunction* function, int argCount) {
 */
 //> Calls and Functions call
-//> Closures call-signature
-static bool call(ObjClosure* closure, int argCount) {
-//< Closures call-signature
-/* Calls and Functions check-arity < Closures check-arity
+
+static bool callFunction(ObjFunction* function, int argCount);
+
+
+static bool callFunction(ObjFunction* function, int argCount) {
   if (argCount != function->arity) {
     runtimeError("Expected %d arguments but got %d.",
-        function->arity, argCount);
-*/
-//> Closures check-arity
-  if (argCount != closure->function->arity) {
-    runtimeError("Expected %d arguments but got %d.",
-        closure->function->arity, argCount);
-//< Closures check-arity
-//> check-arity
+                 function->arity, argCount);
     return false;
   }
 
-//< check-arity
-//> check-overflow
   if (vm.frameCount == FRAMES_MAX) {
     runtimeError("Stack overflow.");
     return false;
   }
 
-//< check-overflow
   CallFrame* frame = &vm.frames[vm.frameCount++];
-/* Calls and Functions call < Closures call-init-closure
   frame->function = function;
+  frame->closure = NULL;
   frame->ip = function->chunk.code;
-*/
-//> Closures call-init-closure
-  frame->closure = closure;
-  frame->ip = closure->function->chunk.code;
-//< Closures call-init-closure
   frame->slots = vm.stackTop - argCount - 1;
   return true;
 }
+
+static bool callClosure(ObjClosure* closure, int argCount);
+
+static bool callClosure(ObjClosure* closure, int argCount) {
+  if (argCount != closure->function->arity) {
+    runtimeError("Expected %d arguments but got %d.",
+                 closure->function->arity, argCount);
+    return false;
+  }
+
+  if (vm.frameCount == FRAMES_MAX) {
+    runtimeError("Stack overflow.");
+    return false;
+  }
+
+  CallFrame* frame = &vm.frames[vm.frameCount++];
+  frame->function = closure->function;
+  frame->closure = closure;
+  frame->ip = closure->function->chunk.code;
+  frame->slots = vm.stackTop - argCount - 1;
+  return true;
+}
+
+// //> Closures call-signature
+// static bool callClosure(ObjClosure* closure, int argCount) {
+// //< Closures call-signature
+// /* Calls and Functions check-arity < Closures check-arity
+//   if (argCount != function->arity) {
+//     runtimeError("Expected %d arguments but got %d.",
+//         function->arity, argCount);
+// */
+// //> Closures check-arity
+//   if (argCount != closure->function->arity) {
+//     runtimeError("Expected %d arguments but got %d.",
+//         closure->function->arity, argCount);
+// //< Closures check-arity
+// //> check-arity
+//     return false;
+//   }
+
+// //< check-arity
+// //> check-overflow
+//   if (vm.frameCount == FRAMES_MAX) {
+//     runtimeError("Stack overflow.");
+//     return false;
+//   }
+
+// //< check-overflow
+//   CallFrame* frame = &vm.frames[vm.frameCount++];
+// /* Calls and Functions call < Closures call-init-closure
+//   frame->function = function;
+//   frame->ip = function->chunk.code;
+// */
+// //> Closures call-init-closure
+//   frame->closure = closure;
+//   frame->ip = closure->function->chunk.code;
+// //< Closures call-init-closure
+//   frame->slots = vm.stackTop - argCount - 1;
+//   return true;
+// }
 //< Calls and Functions call
 //> Calls and Functions call-value
 static bool callValue(Value callee, int argCount) {
@@ -260,7 +365,7 @@ static bool callValue(Value callee, int argCount) {
 //> store-receiver
         vm.stackTop[-argCount - 1] = bound->receiver;
 //< store-receiver
-        return call(bound->method, argCount);
+        return callClosure(bound->method, argCount);
       }
 //< Methods and Initializers call-bound-method
 //> Classes and Instances call-class
@@ -271,7 +376,7 @@ static bool callValue(Value callee, int argCount) {
         Value initializer;
         if (tableGet(&klass->methods, vm.initString,
                      &initializer)) {
-          return call(AS_CLOSURE(initializer), argCount);
+          return callClosure(AS_CLOSURE(initializer), argCount);
 //> no-init-arity-error
         } else if (argCount != 0) {
           runtimeError("Expected 0 arguments but got %d.",
@@ -285,16 +390,29 @@ static bool callValue(Value callee, int argCount) {
 //< Classes and Instances call-class
 //> Closures call-value-closure
       case OBJ_CLOSURE:
-        return call(AS_CLOSURE(callee), argCount);
+        return callClosure(AS_CLOSURE(callee), argCount);
 //< Closures call-value-closure
 /* Calls and Functions call-value < Closures call-value-closure
       case OBJ_FUNCTION: // [switch]
-        return call(AS_FUNCTION(callee), argCount);
+        return callClosure(AS_FUNCTION(callee), argCount);
 */
+
+      case OBJ_FUNCTION:
+        return callFunction(AS_FUNCTION(callee), argCount);
 //> call-native
       case OBJ_NATIVE: {
-        NativeFn native = AS_NATIVE(callee);
-        Value result = native(argCount, vm.stackTop - argCount);
+        ObjNative* native = AS_NATIVE_OBJ(callee);
+        
+        if (argCount != native->arity) {
+          runtimeError("Expected %d arguments but got %d.",
+                       native->arity, argCount);
+          return false;
+        }
+        
+        Value result;
+        if (!native->function(argCount, vm.stackTop - argCount, &result)) {
+          return false; // error already reported
+        }
         vm.stackTop -= argCount + 1;
         push(result);
         return true;
@@ -316,7 +434,7 @@ static bool invokeFromClass(ObjClass* klass, ObjString* name,
     runtimeError("Undefined property '%s'.", name->chars);
     return false;
   }
-  return call(AS_CLOSURE(method), argCount);
+  return callClosure(AS_CLOSURE(method), argCount);
 }
 //< Methods and Initializers invoke-from-class
 //> Methods and Initializers invoke
@@ -440,6 +558,7 @@ static void concatenate() {
 static InterpretResult run() {
 //> Calls and Functions run
   CallFrame* frame = &vm.frames[vm.frameCount - 1];
+  register uint8_t* ip = frame->ip; 
 
 /* A Virtual Machine run < Calls and Functions run
 #define READ_BYTE() (*vm.ip++)
@@ -463,8 +582,11 @@ static InterpretResult run() {
 */
 //> Closures read-constant
 #define READ_CONSTANT() \
-    (frame->closure->function->chunk.constants.values[READ_BYTE()])
+    (frame->function->chunk.constants.values[READ_BYTE()])
 //< Closures read-constant
+
+#define STORE_IP() (frame->ip = ip)
+#define LOAD_IP() (ip = frame->ip)
 
 //< Calls and Functions run
 //> Global Variables read-string
@@ -502,6 +624,7 @@ static InterpretResult run() {
       printf(" ]");
     }
     printf("\n");
+    STORE_IP();
 //< trace-stack
 /* A Virtual Machine trace-execution < Calls and Functions trace-execution
     disassembleInstruction(vm.chunk,
@@ -538,7 +661,7 @@ static InterpretResult run() {
       uint32_t constantIndex = READ_BYTE() |
                                (READ_BYTE() << 8) |
                                (READ_BYTE() << 16);
-      Value constant = frame->closure->function->chunk.constants.values[constantIndex];
+      Value constant = frame->function->chunk.constants.values[constantIndex];
       push(constant);
       break;
     }
@@ -806,6 +929,7 @@ static InterpretResult run() {
         }
 //> update-frame-after-call
         frame = &vm.frames[vm.frameCount - 1];
+        LOAD_IP();
 //< update-frame-after-call
         break;
       }
@@ -818,6 +942,7 @@ static InterpretResult run() {
           return INTERPRET_RUNTIME_ERROR;
         }
         frame = &vm.frames[vm.frameCount - 1];
+        LOAD_IP();
         break;
       }
 //< Methods and Initializers interpret-invoke
@@ -830,25 +955,31 @@ static InterpretResult run() {
           return INTERPRET_RUNTIME_ERROR;
         }
         frame = &vm.frames[vm.frameCount - 1];
+        LOAD_IP();
         break;
       }
 //< Superclasses interpret-super-invoke
 //> Closures interpret-closure
       case OP_CLOSURE: {
         ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
-        ObjClosure* closure = newClosure(function);
-        push(OBJ_VAL(closure));
-//> interpret-capture-upvalues
-        for (int i = 0; i < closure->upvalueCount; i++) {
-          uint8_t isLocal = READ_BYTE();
-          uint8_t index = READ_BYTE();
-          if (isLocal) {
-            closure->upvalues[i] =
-                captureUpvalue(frame->slots + index);
-          } else {
-            closure->upvalues[i] = frame->closure->upvalues[index];
+
+        if (function->upvalueCount == 0) {
+          push(OBJ_VAL(function));
+        } else {
+          ObjClosure* closure = newClosure(function);
+          push(OBJ_VAL(closure));
+
+          for (int i = 0; i < closure->upvalueCount; i++) {
+            uint8_t isLocal = READ_BYTE();
+            uint8_t index = READ_BYTE();
+            if (isLocal) {
+              closure->upvalues[i] =
+                  captureUpvalue(frame->slots + index);
+            } else {
+              closure->upvalues[i] = frame->closure->upvalues[index];
+            }
           }
-        }
+}
 //< interpret-capture-upvalues
         break;
       }
@@ -884,6 +1015,7 @@ static InterpretResult run() {
         vm.stackTop = frame->slots;
         push(result);
         frame = &vm.frames[vm.frameCount - 1];
+        LOAD_IP();
         break;
 //< Calls and Functions interpret-return
       }
@@ -927,6 +1059,8 @@ static InterpretResult run() {
 //> Global Variables undef-read-string
 #undef READ_STRING
 //< Global Variables undef-read-string
+#undef STORE_IP
+#undef LOAD_IP
 //> undef-binary-op
 #undef BINARY_OP
 //< undef-binary-op
@@ -969,7 +1103,6 @@ InterpretResult interpret(const char* source) {
   ObjFunction* function = compile(source);
   if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
-  push(OBJ_VAL(function));
 //< Calls and Functions interpret-stub
 /* Calls and Functions interpret-stub < Calls and Functions interpret
   CallFrame* frame = &vm.frames[vm.frameCount++];
@@ -978,13 +1111,17 @@ InterpretResult interpret(const char* source) {
   frame->slots = vm.stack;
 */
 /* Calls and Functions interpret < Closures interpret
-  call(function, 0);
+  callClosure(function, 0);
 */
 //> Closures interpret
-  ObjClosure* closure = newClosure(function);
-  pop();
-  push(OBJ_VAL(closure));
-  call(closure, 0);
+  if (function->upvalueCount == 0) {
+    push(OBJ_VAL(function));
+    callFunction(function, 0);
+  } else {
+    ObjClosure* closure = newClosure(function);
+    push(OBJ_VAL(closure));
+    callClosure(closure, 0);
+  }
 //< Closures interpret
 //< Scanning on Demand vm-interpret-c
 //> Compiling Expressions interpret-chunk

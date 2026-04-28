@@ -1,0 +1,113 @@
+fun makeVector(x, y) {
+  // Private state captured by closure
+  
+  // Getter methods
+  fun getX() { return x; }
+  fun getY() { return y; }
+  
+  // Setter methods (return new vector - immutable)
+  fun setX(newX) { return makeVector(newX, y); }
+  fun setY(newY) { return makeVector(x, newY); }
+  
+  // Vector operations
+  fun add(other) {
+    return makeVector(
+      x + other("getX")(),
+      y + other("getY")()
+    );
+  }
+  
+  fun subtract(other) {
+    return makeVector(
+      x - other("getX")(),
+      y - other("getY")()
+    );
+  }
+  
+  fun scale(scalar) {
+    return makeVector(x * scalar, y * scalar);
+  }
+  
+  fun negate() {
+    return makeVector(-x, -y);
+  }
+  
+  fun dot(other) {
+    return x * other("getX")() + y * other("getY")();
+  }
+  
+  fun magnitudeSquared() {
+    return x * x + y * y;
+  }
+  
+  fun equals(other) {
+    return x == other("getX")() and y == other("getY")();
+  }
+  
+  fun toString() {
+    return "Vector(" + x + ", " + y + ")";
+  }
+  
+  // Dispatch function - the "public interface"
+  fun dispatch(method) {
+    if (method == "getX") return getX;
+    if (method == "getY") return getY;
+    if (method == "setX") return setX;
+    if (method == "setY") return setY;
+    if (method == "add") return add;
+    if (method == "subtract") return subtract;
+    if (method == "scale") return scale;
+    if (method == "negate") return negate;
+    if (method == "dot") return dot;
+    if (method == "magnitudeSquared") return magnitudeSquared;
+    if (method == "equals") return equals;
+    if (method == "toString") return toString;
+    
+    print "Unknown method: " + method;
+    return nil;
+  }
+  
+  return dispatch;
+}
+
+// Test suite
+print "=== Vector Tests ===";
+
+var v1 = makeVector(3, 4);
+var v2 = makeVector(1, 2);
+
+print "v1 = " + v1("toString")();
+print "v2 = " + v2("toString")();
+
+print "v1.x = " + v1("getX")();
+print "v1.y = " + v1("getY")();
+
+var v3 = v1("add")(v2);
+print "v1 + v2 = " + v3("toString")();
+
+var v4 = v1("subtract")(v2);
+print "v1 - v2 = " + v4("toString")();
+
+var v5 = v1("scale")(2);
+print "v1 * 2 = " + v5("toString")();
+
+var v6 = v1("negate")();
+print "-v1 = " + v6("toString")();
+
+var dot = v1("dot")(v2);
+print "v1 · v2 = " + dot;
+
+var mag = v1("magnitudeSquared")();
+print "|v1|² = " + mag;
+
+var v7 = v1("setX")(10);
+print "v1 with x=10: " + v7("toString")();
+print "v1 unchanged: " + v1("toString")();
+
+if (v1("equals")(v1)) {
+  print "v1 equals itself ✓";
+}
+
+if (!v1("equals")(v2)) {
+  print "v1 doesn't equal v2 ✓";
+}
